@@ -372,6 +372,21 @@
       const context = cast.framework.CastReceiverContext.getInstance();
       const options = new cast.framework.CastReceiverOptions();
       options.disableIdleTimeout = true;
+      
+      // Prevent Chromecast/CAF from showing the default "media receiver" UI.
+      // We are NOT casting audio/video; this receiver is display-only and driven by custom NOW_PLAYING messages.
+      try {
+        const playerManager = context.getPlayerManager();
+        playerManager.setMessageInterceptor(
+          cast.framework.messages.MessageType.LOAD,
+          (loadRequestData) => {
+            console.log('[Receiver] Ignoring MEDIA LOAD request');
+            return null;
+          }
+        );
+      } catch (e) {
+        // ignore
+      }
       context.addCustomMessageListener(CAST_NAMESPACE, (event) => handleMessage(event.data));
       
       // Listen for sender disconnect to stop timers
@@ -673,7 +688,7 @@
         lastPayload = null;
       }
 
-      context.start(options);
+      // NOTE: do not call context.start() twice (can cause odd CAF behavior / default UI)
     </script>
   </body>
 </html>
