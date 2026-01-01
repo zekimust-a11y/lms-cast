@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Roon Cast Receiver</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        min-height: 100vh;
+        overflow: hidden;
+        background: #000;
+        color: #fff;
+      }
+
+      .background-layer {
+        position: fixed;
+        inset: 0;
+        background-size: cover;
+        background-position: center bottom;
+        opacity: 0;
+        transition: opacity 1.5s ease-in-out;
+        will-change: opacity;
+      }
+
+      .background-layer.active {
+        opacity: 1;
+      }
+
+      .background-layer.blurred {
+        filter: blur(40px) brightness(0.35);
+        transform: scale(1.08);
+      }
+
+      .background-overlay {
+        position: fixed;
+        inset: 0;
+        background: linear-gradient(
+          180deg,
+          rgba(0, 0, 0, 0.15) 0%,
+          rgba(0, 0, 0, 0.55) 55%,
+          rgba(0, 0, 0, 0.9) 100%
+        );
+        z-index: 2;
+      }
+
+      .bottom-bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 32px 60px 40px;
+        display: flex;
+        gap: 48px;
+        align-items: flex-end;
+        z-index: 10;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+      }
+
+      .bottom-bar.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .artwork-container {
+        width: 33vh;
+        height: 33vh;
+        max-width: 442px;
+        flex-shrink: 0;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .artwork {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0;
+        transition: opacity 0.6s ease;
+      }
+
+      .artwork.loaded {
+        opacity: 1;
+      }
+
+      .info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .title {
+        font-size: 2.6rem;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        margin-bottom: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .artist-text {
+        font-size: 1.3rem;
+        color: rgba(255, 255, 255, 0.8);
+        margin-bottom: 16px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .progress-row {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+
+      .time {
+        width: 70px;
+        font-variant-numeric: tabular-nums;
+        color: rgba(255, 255, 255, 0.75);
+        display: inline-flex;
+        align-items: center;
+        line-height: 1;
+        min-height: 1em;
+      }
+
+      .time.duration {
+        justify-content: flex-end;
+        text-align: right;
+      }
+
+      .progress-container {
+        flex: 1;
+        height: 3px;
+        display: flex;
+        align-items: center;
+        position: relative;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #ffffff, rgba(255, 255, 255, 0.9));
+        border-radius: 3px;
+        transition: width 1s linear;
+        width: 0%;
+      }
+
+      #volume-overlay {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.8);
+        padding: 32px 48px;
+        border-radius: 18px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+        z-index: 20;
+      }
+
+      #volume-overlay.visible {
+        opacity: 1;
+      }
+
+      .volume-icon {
+        font-size: 3rem;
+      }
+
+      .volume-text {
+        font-size: 4.5rem;
+        font-weight: 200;
+      }
+
+      .mute-text {
+        font-size: 2rem;
+        letter-spacing: 4px;
+        color: #ff6666;
+      }
+
+      @media (max-width: 1100px) {
+        .bottom-bar {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .artwork-container {
+          width: 55vw;
+          height: 55vw;
+        }
+
+        .info {
+          width: 100%;
+        }
+
+        .title {
+          font-size: 2rem;
+          text-align: center;
+        }
+
+        .artist-text {
+          text-align: center;
+        }
+
+        .progress-row {
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .progress-container {
+          width: 100%;
+        }
+
+        .time {
+          width: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bg-layer-0" class="background-layer active"></div>
+    <div id="bg-layer-1" class="background-layer"></div>
+    <div class="background-overlay"></div>
+
+    <div class="bottom-bar hidden">
+      <div class="artwork-container">
+        <img id="album-art" class="artwork" alt="Album art" />
+      </div>
+      <div class="info">
+        <h1 class="title"></h1>
+        <p class="artist-text"></p>
+        <div class="progress-row">
+          <span class="time current">0:00</span>
+          <div class="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>
+          <span class="time duration">0:00</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="volume-overlay">
+      <div id="volume-icon" class="volume-icon">🔊</div>
+      <div id="volume-value" class="volume-text">0</div>
+    </div>
+
+    <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <script>
+      const CAST_NAMESPACE = 'urn:x-cast:com.zeki.rooncast';
+      const context = cast.framework.CastReceiverContext.getInstance();
+      const options = new cast.framework.CastReceiverOptions();
+      options.disableIdleTimeout = true;
+      context.addCustomMessageListener(CAST_NAMESPACE, (event) => handleMessage(event.data));
+      
+      // Listen for sender disconnect to stop timers
+      context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED, (event) => {
+        console.log('Sender disconnected, stopping playback');
+        stopPlayback();
+      });
+      
+      context.start(options);
+
+      const bgLayers = [
+        document.getElementById('bg-layer-0'),
+        document.getElementById('bg-layer-1')
+      ];
+      const titleEl = document.querySelector('.title');
+      const artistEl = document.querySelector('.artist-text');
+      const currentTimeEl = document.querySelector('.time.current');
+      const durationEl = document.querySelector('.time.duration');
+      const progressBar = document.getElementById('progress-bar');
+      const albumArt = document.getElementById('album-art');
+      const bottomBar = document.querySelector('.bottom-bar');
+      const volumeOverlay = document.getElementById('volume-overlay');
+      const volumeIcon = document.getElementById('volume-icon');
+      const volumeValue = document.getElementById('volume-value');
+
+      let lastTrackId = '';
+      let lastPayload = null;
+      let tickTimer = null;
+      let activeBackgroundLayer = 0;
+      let lastVolume = null;
+      let lastMute = null;
+      let volumeTimer = null;
+      let artistImages = [];
+      let rotationTimer = null;
+      const BACKGROUND_ROTATION_MS = 20000;
+
+      function handleMessage(data) {
+        if (!data) return;
+        if (data.type === 'NOW_PLAYING' || data.type === 'STATE') {
+          applyNowPlaying(data.payload || {});
+        } else if (data.type === 'PAUSE') {
+          console.log('Received PAUSE command, stopping playback');
+          stopPlayback();
+        }
+      }
+
+      function applyNowPlaying(payload) {
+        const state = payload.state || 'idle';
+        const isPlaying = state === 'playing';
+        const isLoading = state === 'loading';
+        const nowPlaying = payload.now_playing || null;
+
+        // During loading/transitions, keep the last display
+        if (isLoading && !nowPlaying && lastPayload) {
+          return;
+        }
+
+        // If no nowPlaying but not explicitly idle/stopped/paused, keep last display (track change transition)
+        if (!nowPlaying && state !== 'idle' && state !== 'stopped' && state !== 'paused' && lastPayload && lastPayload.now_playing) {
+          console.log('[Receiver] Keeping last display during transition, state:', state);
+          return;
+        }
+
+        lastPayload = payload;
+        if (tickTimer) clearInterval(tickTimer);
+
+        if (nowPlaying) {
+          // Show the bottom bar when we have content
+          bottomBar.classList.remove('hidden');
+          
+          const trackId = `${nowPlaying.one_line?.line1 || ''}-${nowPlaying.two_line?.line1 || ''}`;
+          let artistName = nowPlaying.two_line?.line2 || '';
+          // If multiple artists separated by slashes, show only the primary artist
+          if (artistName.includes(' / ')) {
+            artistName = artistName.split(' / ')[0].trim();
+          }
+          const trackTitle = nowPlaying.two_line?.line1 || nowPlaying.one_line?.line1 || 'Unknown track';
+          const duration = nowPlaying.length || 0;
+          const seek = payload.seek_position || 0;
+          const progress = duration > 0 ? (seek / duration) * 100 : 0;
+
+          titleEl.textContent = trackTitle;
+          artistEl.textContent = artistName;
+          currentTimeEl.textContent = formatTime(seek);
+          durationEl.textContent = formatTime(duration);
+          updateProgress(progress);
+
+          if (trackId !== lastTrackId) {
+            console.log('[Receiver] Track changed:', trackTitle);
+            lastTrackId = trackId;
+            const albumImage = payload.image_data || null;
+            const albumBackground = payload.image_url || albumImage;
+            const artistImageList = payload.artist_images || [];
+            setAlbumArt(albumImage);
+            updateBackgroundSources(artistImageList, albumBackground);
+          }
+
+          if (tickTimer) {
+            clearInterval(tickTimer);
+            tickTimer = null;
+          }
+          if (isPlaying) {
+            tickTimer = setInterval(() => incrementSeek(), 1000);
+          }
+          handleVolumeOverlay(payload.output?.volume);
+        } else if (state === 'idle' || state === 'stopped' || state === 'paused') {
+          // Only reset display for explicit idle/stopped/paused states
+          console.log('[Receiver] Resetting display, state:', state);
+          resetDisplay();
+        }
+      }
+
+      function incrementSeek() {
+        if (!lastPayload || !lastPayload.now_playing) return;
+        if (lastPayload.state && lastPayload.state !== 'playing') {
+          return;
+        }
+        lastPayload.seek_position = (lastPayload.seek_position || 0) + 1;
+        const total = lastPayload.now_playing.length || 0;
+        const seek = lastPayload.seek_position;
+        currentTimeEl.textContent = formatTime(seek);
+        // Update progress to the NEXT second's position for smooth animation
+        const nextProgress = total > 0 ? ((seek + 1) / total) * 100 : 0;
+        updateProgress(nextProgress);
+      }
+
+      function handleVolumeOverlay(volumeObj) {
+        if (!volumeObj) return;
+        const db = typeof volumeObj.value === 'number' ? volumeObj.value : -80;
+        const percentage = Math.max(0, Math.min(100, Math.round(((db + 80) / 80) * 100)));
+        const isMuted = !!volumeObj.is_muted;
+        
+        // Only show overlay if volume actually changed (not on initial load)
+        const volumeChanged = lastVolume !== null && (lastVolume !== percentage || lastMute !== isMuted);
+        
+        if (!volumeChanged && lastVolume === null) {
+          // First load - just save the values without showing overlay
+          lastVolume = percentage;
+          lastMute = isMuted;
+          return;
+        }
+        
+        if (!volumeChanged) return;
+        
+        lastVolume = percentage;
+        lastMute = isMuted;
+        
+        if (isMuted) {
+          volumeIcon.textContent = '🔇';
+          volumeValue.innerHTML = '<span class="mute-text">MUTED</span>';
+          volumeOverlay.classList.add('visible');
+          clearTimeout(volumeTimer);
+        } else {
+          volumeIcon.textContent = percentage > 60 ? '🔊' : percentage > 0 ? '🔉' : '🔈';
+          volumeValue.textContent = percentage;
+          volumeOverlay.classList.add('visible');
+          clearTimeout(volumeTimer);
+          volumeTimer = setTimeout(() => volumeOverlay.classList.remove('visible'), 2500);
+        }
+      }
+
+      function setAlbumArt(imageUrl) {
+        if (imageUrl) {
+          const img = new Image();
+          img.onload = () => {
+            albumArt.src = imageUrl;
+            albumArt.classList.add('loaded');
+          };
+          img.src = imageUrl;
+        } else {
+          albumArt.classList.remove('loaded');
+          albumArt.removeAttribute('src');
+        }
+      }
+
+      function updateBackgroundSources(artistList, albumImage) {
+        if (rotationTimer) {
+          clearInterval(rotationTimer);
+          rotationTimer = null;
+        }
+        artistImages = Array.isArray(artistList) ? artistList.filter(Boolean) : [];
+        console.log('[Receiver] updateBackgroundSources: got', artistImages.length, 'artist images');
+
+        if (artistImages.length > 0) {
+          console.log('[Receiver] Starting artist image rotation, images:', artistImages.length);
+          let index = 0;
+          const showNext = () => {
+            console.log('[Receiver] Showing artist image', index + 1, 'of', artistImages.length);
+            setBackground(artistImages[index], false);
+            index = (index + 1) % artistImages.length;
+          };
+          showNext();
+          if (artistImages.length > 1) {
+            rotationTimer = setInterval(showNext, BACKGROUND_ROTATION_MS);
+            console.log('[Receiver] Rotation timer set for', BACKGROUND_ROTATION_MS, 'ms');
+          } else {
+            console.log('[Receiver] Only 1 artist image, no rotation needed');
+          }
+        } else if (albumImage) {
+          console.log('[Receiver] No artist images, using blurred album art');
+          setBackground(albumImage, true);
+        } else {
+          console.log('[Receiver] No images available, clearing background');
+          clearBackground();
+        }
+      }
+
+      function setBackground(url, blurred = false) {
+        const target = bgLayers[activeBackgroundLayer === 0 ? 1 : 0];
+        const other = bgLayers[activeBackgroundLayer];
+        const img = new Image();
+        img.onload = () => {
+          target.style.backgroundImage = `url('${url}')`;
+          if (blurred) {
+            target.classList.add('blurred');
+          } else {
+            target.classList.remove('blurred');
+          }
+          other.classList.remove('active');
+          target.classList.add('active');
+          activeBackgroundLayer = activeBackgroundLayer === 0 ? 1 : 0;
+        };
+        img.src = url;
+      }
+
+      function clearBackground() {
+        bgLayers.forEach((layer) => {
+          layer.style.backgroundImage = 'none';
+          layer.classList.remove('active');
+        });
+      }
+
+      function updateProgress(progress) {
+        progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+      }
+
+      function formatTime(seconds) {
+        const safe = Math.max(0, Math.floor(seconds || 0));
+        const mins = Math.floor(safe / 60)
+          .toString()
+          .padStart(1, '0');
+        const secs = Math.floor(safe % 60)
+          .toString()
+          .padStart(2, '0');
+        return `${mins}:${secs}`;
+      }
+
+      function resetDisplay() {
+        // Hide the entire bottom bar for blank screen
+        bottomBar.classList.add('hidden');
+        
+        titleEl.textContent = '';
+        artistEl.textContent = '';
+        currentTimeEl.textContent = '0:00';
+        durationEl.textContent = '0:00';
+        albumArt.classList.remove('loaded');
+        albumArt.removeAttribute('src');
+        updateBackgroundSources([], null);
+        updateProgress(0);
+        stopPlayback();
+      }
+
+      function stopPlayback() {
+        if (tickTimer) {
+          clearInterval(tickTimer);
+          tickTimer = null;
+        }
+        if (rotationTimer) {
+          clearInterval(rotationTimer);
+          rotationTimer = null;
+        }
+        lastPayload = null;
+      }
+
+      context.start(options);
+    </script>
+  </body>
+</html>
