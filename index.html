@@ -50,6 +50,33 @@
         pointer-events: none;
       }
 
+      /* Big, obvious, center-screen test badge to confirm correct receiver HTML */
+      .build-badge-center {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+        font-size: clamp(22px, 4vw, 54px);
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: rgba(255, 255, 255, 0.95);
+        background: rgba(0, 0, 0, 0.65);
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        padding: 18px 26px;
+        border-radius: 18px;
+        text-align: center;
+        user-select: none;
+        pointer-events: none;
+        backdrop-filter: blur(10px);
+        opacity: 1;
+        transition: opacity 1.2s ease;
+      }
+
+      .build-badge-center.fade-out {
+        opacity: 0;
+      }
+
       .background-layer {
         position: fixed;
         inset: 0;
@@ -268,6 +295,7 @@
   </head>
   <body>
     <div class="build-badge" id="build-badge">SoundStream Receiver</div>
+    <div class="build-badge-center" id="build-badge-center">SoundStream Receiver</div>
     <div id="bg-layer-0" class="background-layer active"></div>
     <div id="bg-layer-1" class="background-layer"></div>
     <div class="background-overlay"></div>
@@ -341,6 +369,12 @@
         const v = new URLSearchParams(location.search).get('v') || 'no-v';
         const badge = document.getElementById('build-badge');
         if (badge) badge.textContent = `SoundStream Receiver v=${v}`;
+        const badgeCenter = document.getElementById('build-badge-center');
+        if (badgeCenter) {
+          badgeCenter.textContent = `SoundStream Receiver\\nv=${v}`;
+          // Auto-fade after a few seconds so it doesn't annoy during playback
+          setTimeout(() => badgeCenter.classList.add('fade-out'), 8000);
+        }
       } catch (e) {
         // ignore
       }
