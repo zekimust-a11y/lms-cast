@@ -257,23 +257,60 @@
       </div>
     </div>
 
+    <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script>
-      // Get URL parameters
+      // Cast SDK setup
+      const CAST_NAMESPACE = 'urn:x-cast:com.zeki.rooncast';
+      const context = cast.framework.CastReceiverContext.getInstance();
+      const options = new cast.framework.CastReceiverOptions();
+      options.disableIdleTimeout = true;
+      
+      // Get URL parameters (fallback)
       const params = new URLSearchParams(window.location.search);
       let host = params.get('host') || '';
       let port = params.get('port') || '9000';
       let playerId = params.get('player') || '';
+      let serverUrl = '';
+      
+      // Listen for Cast messages with LMS parameters and server URL
+      context.addCustomMessageListener(CAST_NAMESPACE, (event) => {
+        console.log('[Cast] Received message:', event.data);
+        const data = event.data;
+        
+        if (data.type === 'SET_LMS_PARAMS') {
+          host = data.host || host;
+          port = data.port || port;
+          playerId = data.player || playerId;
+          serverUrl = data.serverUrl || serverUrl;
+          
+          console.log('[Cast] Updated params:', { host, port, playerId, serverUrl });
+          
+          // Start polling if we have all required params
+          if (host && playerId && serverUrl) {
+            startPolling();
+          }
+        }
+      });
+      
+      context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED, (event) => {
+        console.log('Sender disconnected');
+      });
+      
+      context.start(options);
+      console.log('[Cast] Receiver started, waiting for parameters...');
       
       if (window.EMBEDDED_PARAMS) {
         host = window.EMBEDDED_PARAMS.host || host;
         port = window.EMBEDDED_PARAMS.port || port;
         playerId = window.EMBEDDED_PARAMS.player || playerId;
+        serverUrl = window.EMBEDDED_PARAMS.serverUrl || serverUrl;
       }
       
       if (!host) host = '192.168.0.19';
       if (!port) port = '9000';
+      if (!serverUrl) serverUrl = 'http://192.168.0.21:3000';
       
-      const proxyUrl = '/api/lms/proxy';
+      const proxyUrl = `${serverUrl}/api/lms/proxy`;
       const AUDIODB_API_KEY = '2';
       const BACKGROUND_ROTATION_MS = 20000;
 
