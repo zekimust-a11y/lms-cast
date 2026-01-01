@@ -291,8 +291,8 @@
         color: #ff6666;
       }
 
-      /* Receiver runs on TVs; force desktop layout (avoid centered "mobile" layout on Chromecast). */
-      @media (max-width: 0px) {
+      /* Cast devices often report ~960px CSS width on 1080p TVs; keep desktop layout for TV. */
+      @media (max-width: 850px) {
         .bottom-bar {
           flex-direction: column;
           align-items: center;
@@ -425,7 +425,7 @@
       let volumeTimer = null;
       let artistImages = [];
       let rotationTimer = null;
-      const BACKGROUND_ROTATION_MS = 20000;
+      const BACKGROUND_ROTATION_MS = 25000;
 
       // Debug overlays only when explicitly requested
       try {
