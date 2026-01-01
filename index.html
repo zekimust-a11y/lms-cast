@@ -449,8 +449,8 @@
         if (data.type === 'NOW_PLAYING' || data.type === 'STATE') {
           applyNowPlaying(data.payload || {});
         } else if (data.type === 'PAUSE') {
-          console.log('Received PAUSE command, stopping playback');
-          stopPlayback();
+          console.log('Received PAUSE command, resetting display');
+          resetDisplay();
         }
       }
 
