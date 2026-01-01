@@ -513,7 +513,8 @@
           if (isPlaying) {
             tickTimer = setInterval(() => incrementSeek(), 1000);
           }
-          // Intentionally not showing volume overlay here to match /now-playing layout
+          // Show volume overlay when volume changes (same behavior as roon-cast receiver)
+          handleVolumeOverlay(payload.output?.volume);
         } else if (state === 'idle' || state === 'stopped' || state === 'paused') {
           // Only reset display for explicit idle/stopped/paused states
           console.log('[Receiver] Resetting display, state:', state);
