@@ -257,12 +257,42 @@
       </div>
     </div>
 
+    <!-- Google Cast SDK -->
+    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+
     <script>
-      // Get URL parameters
+      // Initialize Cast SDK
+      const context = cast.framework.CastReceiverContext.getInstance();
+      const CUSTOM_CHANNEL = 'urn:x-cast:com.google.cast.media';
+      
+      // Get URL parameters (fallback)
       const params = new URLSearchParams(window.location.search);
       let host = params.get('host') || '';
       let port = params.get('port') || '9000';
       let playerId = params.get('player') || '';
+      
+      // Listen for Cast messages with LMS parameters
+      context.addCustomMessageListener(CUSTOM_CHANNEL, (customEvent) => {
+        console.log('[Cast] Received message:', customEvent.data);
+        const data = customEvent.data;
+        
+        if (data.type === 'SET_LMS_PARAMS') {
+          host = data.host || host;
+          port = data.port || port;
+          playerId = data.player || playerId;
+          
+          console.log('[Cast] Updated LMS params:', { host, port, playerId });
+          
+          // Restart polling with new parameters
+          if (host && playerId) {
+            startPolling();
+          }
+        }
+      });
+      
+      // Start Cast receiver
+      context.start();
+      console.log('[Cast] Receiver started, waiting for LMS parameters...');
       
       if (window.EMBEDDED_PARAMS) {
         host = window.EMBEDDED_PARAMS.host || host;
