@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>SoundStream Cast Receiver</title>
+    <title>Now Playing - SoundStream</title>
     <script>
       // Cache-bust the receiver URL (Chromecast can aggressively cache GitHub Pages)
       try {
@@ -48,6 +48,7 @@
         border-radius: 999px;
         user-select: none;
         pointer-events: none;
+        display: none;
       }
 
       /* Big, obvious, center-screen test badge to confirm correct receiver HTML */
@@ -71,10 +72,16 @@
         backdrop-filter: blur(10px);
         opacity: 1;
         transition: opacity 1.2s ease;
+        display: none;
       }
 
       .build-badge-center.fade-out {
         opacity: 0;
+      }
+
+      body.debug .build-badge,
+      body.debug .build-badge-center {
+        display: block;
       }
 
       .background-layer {
@@ -217,6 +224,36 @@
         width: 0%;
       }
 
+      .not-playing-container {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+      }
+
+      .not-playing-container.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .not-playing {
+        text-align: center;
+      }
+
+      .not-playing h2 {
+        font-size: 2rem;
+        margin-bottom: 12px;
+      }
+
+      .not-playing p {
+        font-size: 1.2rem;
+        color: rgba(255, 255, 255, 0.7);
+      }
+
       #volume-overlay {
         position: fixed;
         top: 50%;
@@ -300,6 +337,13 @@
     <div id="bg-layer-1" class="background-layer"></div>
     <div class="background-overlay"></div>
 
+    <div class="not-playing-container" id="not-playing-container">
+      <div class="not-playing">
+        <h2 id="not-playing-title">SoundStream</h2>
+        <p id="not-playing-subtitle">Waiting for playback…</p>
+      </div>
+    </div>
+
     <div class="bottom-bar hidden">
       <div class="artwork-container">
         <img id="album-art" class="artwork" alt="Album art" />
@@ -349,6 +393,9 @@
       const progressBar = document.getElementById('progress-bar');
       const albumArt = document.getElementById('album-art');
       const bottomBar = document.querySelector('.bottom-bar');
+      const notPlayingContainer = document.getElementById('not-playing-container');
+      const notPlayingTitle = document.getElementById('not-playing-title');
+      const notPlayingSubtitle = document.getElementById('not-playing-subtitle');
       const volumeOverlay = document.getElementById('volume-overlay');
       const volumeIcon = document.getElementById('volume-icon');
       const volumeValue = document.getElementById('volume-value');
@@ -364,15 +411,17 @@
       let rotationTimer = null;
       const BACKGROUND_ROTATION_MS = 20000;
 
-      // Visible version marker to confirm the TV is loading the expected receiver HTML
+      // Debug overlays only when explicitly requested
       try {
-        const v = new URLSearchParams(location.search).get('v') || 'no-v';
+        const params = new URLSearchParams(location.search);
+        const debug = params.get('debug') === '1';
+        if (debug) document.body.classList.add('debug');
+        const v = params.get('v') || 'no-v';
         const badge = document.getElementById('build-badge');
         if (badge) badge.textContent = `SoundStream Receiver v=${v}`;
         const badgeCenter = document.getElementById('build-badge-center');
         if (badgeCenter) {
           badgeCenter.textContent = `SoundStream Receiver\\nv=${v}`;
-          // Auto-fade after a few seconds so it doesn't annoy during playback
           setTimeout(() => badgeCenter.classList.add('fade-out'), 8000);
         }
       } catch (e) {
@@ -412,6 +461,7 @@
         if (nowPlaying) {
           // Show the bottom bar when we have content
           bottomBar.classList.remove('hidden');
+          if (notPlayingContainer) notPlayingContainer.classList.add('hidden');
           
           const trackId = `${nowPlaying.one_line?.line1 || ''}-${nowPlaying.two_line?.line1 || ''}`;
           let artistName = nowPlaying.two_line?.line2 || '';
@@ -447,7 +497,7 @@
           if (isPlaying) {
             tickTimer = setInterval(() => incrementSeek(), 1000);
           }
-          handleVolumeOverlay(payload.output?.volume);
+          // Intentionally not showing volume overlay here to match /now-playing layout
         } else if (state === 'idle' || state === 'stopped' || state === 'paused') {
           // Only reset display for explicit idle/stopped/paused states
           console.log('[Receiver] Resetting display, state:', state);
@@ -593,6 +643,12 @@
       function resetDisplay() {
         // Hide the entire bottom bar for blank screen
         bottomBar.classList.add('hidden');
+
+        if (notPlayingContainer) {
+          notPlayingContainer.classList.remove('hidden');
+          if (notPlayingTitle) notPlayingTitle.textContent = 'SoundStream';
+          if (notPlayingSubtitle) notPlayingSubtitle.textContent = 'Waiting for playback…';
+        }
         
         titleEl.textContent = '';
         artistEl.textContent = '';
