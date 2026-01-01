@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>SoundStream Cast Receiver</title>
+    <script>
+      // Cache-bust the receiver URL (Chromecast can aggressively cache GitHub Pages)
+      try {
+        const hasV = /[?&]v=/.test(location.search);
+        if (!hasV) {
+          const sep = location.search ? '&' : '?';
+          location.replace(location.pathname + location.search + sep + 'v=' + Date.now() + location.hash);
+        }
+      } catch (e) {
+        // ignore
+      }
+    </script>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <style>
       * {
         margin: 0;
@@ -17,6 +32,22 @@
         overflow: hidden;
         background: #000;
         color: #fff;
+      }
+
+      .build-badge {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 9999;
+        font-size: 12px;
+        letter-spacing: 0.4px;
+        color: rgba(255, 255, 255, 0.85);
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        padding: 6px 10px;
+        border-radius: 999px;
+        user-select: none;
+        pointer-events: none;
       }
 
       .background-layer {
@@ -236,6 +267,7 @@
     </style>
   </head>
   <body>
+    <div class="build-badge" id="build-badge">SoundStream Receiver</div>
     <div id="bg-layer-0" class="background-layer active"></div>
     <div id="bg-layer-1" class="background-layer"></div>
     <div class="background-overlay"></div>
@@ -303,6 +335,15 @@
       let artistImages = [];
       let rotationTimer = null;
       const BACKGROUND_ROTATION_MS = 20000;
+
+      // Visible version marker to confirm the TV is loading the expected receiver HTML
+      try {
+        const v = new URLSearchParams(location.search).get('v') || 'no-v';
+        const badge = document.getElementById('build-badge');
+        if (badge) badge.textContent = `SoundStream Receiver v=${v}`;
+      } catch (e) {
+        // ignore
+      }
 
       function handleMessage(data) {
         if (!data) return;
