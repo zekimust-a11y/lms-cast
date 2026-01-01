@@ -1,35 +1,95 @@
 # LMS Cast Receiver
 
-Custom Chromecast receiver for displaying "Now Playing" information from Logitech Media Server (LMS).
+Custom Google Cast receiver for Logitech Media Server (LMS) with the beautiful roon-cast UI.
 
-## Features
+## Architecture
 
-- Beautiful full-screen display with album artwork
-- Artist background images from TheAudioDB
-- Live progress bar and time display
-- Rotating artist images every 20 seconds
-- Polls LMS directly for track information
+This receiver uses the **Cast Message Architecture**:
+- Receiver is hosted on HTTPS (GitHub Pages)
+- Receives ALL data via Cast messages (no HTTP requests)
+- Server polls LMS and sends formatted NOW_PLAYING messages
+- No mixed content issues
 
-## Receiver URL
+## Deployment
 
-https://zekimust-a11y.github.io/lms-cast
+**Deployed at:** https://zekimust-a11y.github.io/lms-cast/
 
-## Cast App ID
+**Google Cast App ID:** 180705D2
 
-180705D2
+## How It Works
+
+1. **Server polls LMS** (every 2 seconds)
+   - Gets current track info (title, artist, artwork)
+   - Formats data as Roon-compatible NOW_PLAYING messages
+
+2. **Server sends Cast messages**
+   - Sends complete track data via Cast messages
+   - No HTTP requests from receiver
+
+3. **Receiver displays data**
+   - Listens for NOW_PLAYING messages
+   - Updates display with track info
+   - Shows artwork and artist images
+
+## Message Format
+
+```javascript
+{
+  type: 'NOW_PLAYING',
+  payload: {
+    state: 'playing',  // or 'paused', 'stopped'
+    seek_position: 125.5,  // current position in seconds
+    now_playing: {
+      one_line: { line1: 'Track Title' },
+      two_line: { 
+        line1: 'Track Title',
+        line2: 'Artist Name'
+      },
+      three_line: {
+        line1: 'Track Title',
+        line2: 'Artist Name',
+        line3: 'Album Name'
+      },
+      length: 245.3,  // duration in seconds
+      image_keys: ['coverid']
+    },
+    image_url: 'http://lms:9000/music/coverid/cover.jpg',
+    image_data: 'http://lms:9000/music/coverid/cover.jpg',
+    artist_images: []  // Optional array of artist image URLs
+  }
+}
+```
+
+## Comparison with roon-cast
+
+| Feature | roon-cast | lms-cast |
+|---------|-----------|----------|
+| Data Source | Roon Core | Logitech Media Server |
+| Architecture | Cast Messages | Cast Messages |
+| Receiver | Same UI | Same UI |
+| Server | Polls Roon | Polls LMS |
+| HTTPS | ✅ | ✅ |
+| Mixed Content | ❌ None | ❌ None |
 
 ## Usage
 
-Configure this URL in your Google Cast Developer Console as the receiver application URL.
-The receiver will automatically poll LMS for now-playing data when loaded.
+1. Set Google Cast Console receiver URL to:
+   ```
+   https://zekimust-a11y.github.io/lms-cast/
+   ```
 
-## Query Parameters
+2. Server will:
+   - Poll LMS for track info
+   - Format as NOW_PLAYING messages
+   - Send via Cast messages
 
-- `host` - LMS server IP (default: 192.168.0.19)
-- `port` - LMS server port (default: 9000)
-- `player` - LMS player ID (required for specific player)
+3. Receiver will:
+   - Display track info
+   - Update in real-time
+   - Show artwork
 
-Example:
-```
-https://zekimust-a11y.github.io/lms-cast?host=192.168.0.19&port=9000&player=00:30:18:0d:62:1b
-```
+## Cast Namespace
+
+`urn:x-cast:com.zeki.rooncast`
+
+(Same as roon-cast for compatibility)
