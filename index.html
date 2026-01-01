@@ -451,6 +451,14 @@
         } else if (data.type === 'PAUSE') {
           console.log('Received PAUSE command, resetting display');
           resetDisplay();
+        } else if (data.type === 'VOLUME') {
+          // Explicit volume update message (e.g., from Roon volume endpoint)
+          try {
+            const vol = data.payload?.output?.volume ?? data.payload?.volume ?? null;
+            handleVolumeOverlay(vol);
+          } catch (e) {
+            // ignore
+          }
         }
       }
 
