@@ -310,9 +310,13 @@
       if (!port) port = '9000';
       if (!serverUrl) serverUrl = 'http://192.168.0.21:3000';
       
-      const proxyUrl = `${serverUrl}/api/lms/proxy`;
       const AUDIODB_API_KEY = '2';
       const BACKGROUND_ROTATION_MS = 20000;
+      
+      // Function to get proxy URL dynamically
+      function getProxyUrl() {
+        return `${serverUrl}/api/lms/proxy`;
+      }
 
       // DOM Elements
       const bgLayers = [
@@ -338,7 +342,7 @@
       let pollTimer = null;
 
       async function lmsRequest(pid, command) {
-        const response = await fetch(proxyUrl, {
+        const response = await fetch(getProxyUrl(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
