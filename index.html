@@ -546,9 +546,33 @@
 
       function handleVolumeOverlay(volumeObj) {
         if (!volumeObj) return;
-        const db = typeof volumeObj.value === 'number' ? volumeObj.value : -80;
-        const percentage = Math.max(0, Math.min(100, Math.round(((db + 80) / 80) * 100)));
         const isMuted = !!volumeObj.is_muted;
+        const value = typeof volumeObj.value === 'number' ? volumeObj.value : null;
+        const min = typeof volumeObj.min === 'number' ? volumeObj.min : null;
+        const max = typeof volumeObj.max === 'number' ? volumeObj.max : null;
+
+        // Support both Roon dB (-80..0) and LMS percent (0..100) volume payloads.
+        let percentage = null;
+        const looksLikeDb =
+          volumeObj.type === 'db' ||
+          (typeof min === 'number' && min < 0) ||
+          (typeof max === 'number' && max <= 0);
+
+        if (value === null) return;
+
+        if (looksLikeDb) {
+          const dbMin = typeof min === 'number' ? min : -80;
+          const dbMax = typeof max === 'number' ? max : 0;
+          const range = dbMax - dbMin || 80;
+          percentage = Math.max(0, Math.min(100, Math.round(((value - dbMin) / range) * 100)));
+        } else {
+          // Treat as linear percent (0..100), or scale from min/max if provided.
+          if (typeof min === 'number' && typeof max === 'number' && max > min) {
+            percentage = Math.max(0, Math.min(100, Math.round(((value - min) / (max - min)) * 100)));
+          } else {
+            percentage = Math.max(0, Math.min(100, Math.round(value)));
+          }
+        }
         
         // Only show overlay if volume actually changed (not on initial load)
         const volumeChanged = lastVolume !== null && (lastVolume !== percentage || lastMute !== isMuted);
