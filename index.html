@@ -20,13 +20,6 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <style>
-      :root {
-        --sidebar-width: 280px;
-        --dock-pad-x: 60px;
-        --dock-pad-top: 26px;
-        --dock-pad-bottom: 40px;
-      }
-
       * {
         margin: 0;
         padding: 0;
@@ -39,13 +32,6 @@
         overflow: hidden;
         background: #000;
         color: #fff;
-      }
-
-      .app-shell {
-        position: fixed;
-        inset: 0;
-        z-index: 5;
-        pointer-events: none; /* UI is display-only; keep accidental focus/clicks off */
       }
 
       .build-badge {
@@ -135,7 +121,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        padding: var(--dock-pad-top) var(--dock-pad-x) calc(var(--dock-pad-bottom) + env(safe-area-inset-bottom));
+        padding: 32px 60px 40px;
         display: flex;
         gap: 48px;
         align-items: flex-end;
@@ -237,112 +223,6 @@
         border-radius: 3px;
         transition: width 1s linear;
         width: 0%;
-      }
-
-      .volume-pill {
-        display: none;
-        flex-shrink: 0;
-        align-items: center;
-        gap: 14px;
-        padding: 14px 16px;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.5);
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        backdrop-filter: blur(10px);
-      }
-
-      .volume-pill .volume-icon {
-        font-size: 1.8rem;
-        line-height: 1;
-      }
-
-      .volume-pill .volume-value {
-        font-variant-numeric: tabular-nums;
-        font-size: 1.15rem;
-        color: rgba(255, 255, 255, 0.9);
-        min-width: 46px;
-        text-align: right;
-      }
-
-      .volume-meter {
-        width: 120px;
-        height: 6px;
-        background: rgba(255, 255, 255, 0.18);
-        border-radius: 999px;
-        overflow: hidden;
-      }
-
-      .volume-meter > div {
-        height: 100%;
-        width: 0%;
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 999px;
-        transition: width 0.25s ease;
-      }
-
-      .volume-pill.muted .volume-value {
-        color: #ff6666;
-        letter-spacing: 2px;
-        font-weight: 700;
-      }
-
-      .volume-pill.muted .volume-meter > div {
-        width: 0% !important;
-      }
-
-      .sidebar {
-        position: fixed;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: var(--sidebar-width);
-        padding: 26px 22px;
-        z-index: 9;
-        display: none;
-        background: linear-gradient(180deg, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.25));
-        border-right: 1px solid rgba(255, 255, 255, 0.12);
-        backdrop-filter: blur(12px);
-      }
-
-      .sidebar .brand {
-        font-size: 1.05rem;
-        letter-spacing: 0.6px;
-        text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.75);
-        margin-bottom: 22px;
-      }
-
-      .sidebar .menu {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .sidebar .menu-item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 12px 14px;
-        border-radius: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.0);
-        background: rgba(255, 255, 255, 0.0);
-        color: rgba(255, 255, 255, 0.85);
-      }
-
-      .sidebar .menu-item.active {
-        background: rgba(255, 255, 255, 0.10);
-        border-color: rgba(255, 255, 255, 0.18);
-      }
-
-      .sidebar .menu-icon {
-        width: 26px;
-        text-align: center;
-        font-size: 1.2rem;
-      }
-
-      .sidebar .menu-label {
-        font-size: 1.02rem;
-        letter-spacing: 0.2px;
       }
 
       .not-playing-container {
@@ -457,51 +337,6 @@
           width: auto;
         }
       }
-
-      /* Large-screen layout: add left menu + keep a persistent volume control in the bottom dock */
-      @media (min-width: 1200px) and (min-height: 650px) {
-        .sidebar {
-          display: block;
-        }
-
-        .bottom-bar {
-          left: var(--sidebar-width);
-          padding-left: calc(var(--dock-pad-x) + 10px);
-          padding-right: calc(var(--dock-pad-x) + 6px);
-          gap: 56px;
-        }
-
-        .artwork-container {
-          width: 30vh;
-          height: 30vh;
-          max-width: 520px;
-        }
-
-        .title {
-          font-size: 2.55rem;
-        }
-
-        .artist-text {
-          font-size: 1.45rem;
-        }
-
-        .volume-pill {
-          display: inline-flex;
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .background-layer,
-        .artwork,
-        .progress-bar,
-        #volume-overlay {
-          transition: none !important;
-        }
-
-        .volume-meter > div {
-          transition: none !important;
-        }
-      }
     </style>
   </head>
   <body>
@@ -510,30 +345,6 @@
     <div id="bg-layer-0" class="background-layer active"></div>
     <div id="bg-layer-1" class="background-layer"></div>
     <div class="background-overlay"></div>
-
-    <div class="app-shell">
-      <aside class="sidebar" aria-hidden="true">
-        <div class="brand">SoundStream</div>
-        <div class="menu">
-          <div class="menu-item active">
-            <div class="menu-icon">▶</div>
-            <div class="menu-label">Now Playing</div>
-          </div>
-          <div class="menu-item">
-            <div class="menu-icon">≡</div>
-            <div class="menu-label">Queue</div>
-          </div>
-          <div class="menu-item">
-            <div class="menu-icon">⏯</div>
-            <div class="menu-label">Playback</div>
-          </div>
-          <div class="menu-item">
-            <div class="menu-icon">⚙</div>
-            <div class="menu-label">Settings</div>
-          </div>
-        </div>
-      </aside>
-    </div>
 
     <div class="not-playing-container" id="not-playing-container">
       <div class="not-playing">
@@ -556,11 +367,6 @@
           </div>
           <span class="time duration">0:00</span>
         </div>
-      </div>
-      <div class="volume-pill" id="volume-pill" aria-hidden="true">
-        <div id="volume-pill-icon" class="volume-icon">🔊</div>
-        <div class="volume-meter"><div id="volume-pill-meter"></div></div>
-        <div id="volume-pill-value" class="volume-value">--</div>
       </div>
     </div>
 
@@ -617,10 +423,6 @@
       const volumeOverlay = document.getElementById('volume-overlay');
       const volumeIcon = document.getElementById('volume-icon');
       const volumeValue = document.getElementById('volume-value');
-      const volumePill = document.getElementById('volume-pill');
-      const volumePillIcon = document.getElementById('volume-pill-icon');
-      const volumePillValue = document.getElementById('volume-pill-value');
-      const volumePillMeter = document.getElementById('volume-pill-meter');
 
       let lastTrackId = '';
       let lastAlbumImage = null;
@@ -659,9 +461,8 @@
         if (data.type === 'NOW_PLAYING' || data.type === 'STATE') {
           applyNowPlaying(data.payload || {});
         } else if (data.type === 'PAUSE') {
-          // Keep the last now-playing UI on pause (sender will stop casting shortly after).
-          console.log('Received PAUSE command, stopping timers only');
-          stopPlayback();
+          console.log('Received PAUSE command, resetting display');
+          resetDisplay();
         } else if (data.type === 'VOLUME') {
           // Explicit volume update message (e.g., from Roon volume endpoint)
           try {
@@ -745,8 +546,8 @@
           }
           // Show volume overlay when volume changes (same behavior as roon-cast receiver)
           handleVolumeOverlay(payload.output?.volume);
-        } else if (state === 'idle' || state === 'stopped') {
-          // Only reset display for explicit idle/stopped states
+        } else if (state === 'idle' || state === 'stopped' || state === 'paused') {
+          // Only reset display for explicit idle/stopped/paused states
           console.log('[Receiver] Resetting display, state:', state);
           resetDisplay();
         }
@@ -794,25 +595,6 @@
           } else {
             percentage = Math.max(0, Math.min(100, Math.round(value)));
           }
-        }
-
-        // Always update the persistent bottom-dock volume UI (when present)
-        try {
-          if (volumePill && volumePillIcon && volumePillValue && volumePillMeter) {
-            if (isMuted) {
-              volumePillIcon.textContent = '🔇';
-              volumePillValue.textContent = 'MUTED';
-              volumePill.classList.add('muted');
-              volumePillMeter.style.width = '0%';
-            } else {
-              volumePillIcon.textContent = percentage > 60 ? '🔊' : percentage > 0 ? '🔉' : '🔈';
-              volumePillValue.textContent = String(percentage);
-              volumePill.classList.remove('muted');
-              volumePillMeter.style.width = `${percentage}%`;
-            }
-          }
-        } catch (e) {
-          // ignore
         }
         
         // Only show overlay if volume actually changed (not on initial load)
