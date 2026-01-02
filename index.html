@@ -436,8 +436,8 @@
       let volumeTimer = null;
       let artistImages = [];
       let rotationTimer = null;
-      // Rotate faster so it feels "alive" on TV. Also helps confirm it's working.
-      const BACKGROUND_ROTATION_MS = 12000;
+      // Rotate artist backgrounds every 25 seconds (as requested).
+      const BACKGROUND_ROTATION_MS = 25000;
 
       // Debug overlays only when explicitly requested
       try {
