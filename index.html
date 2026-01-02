@@ -425,6 +425,8 @@
       const volumeValue = document.getElementById('volume-value');
 
       let lastTrackId = '';
+      let lastAlbumImage = null;
+      let lastAlbumBackground = null;
       let lastPayload = null;
       let tickTimer = null;
       let activeBackgroundLayer = 0;
@@ -512,12 +514,20 @@
           durationEl.textContent = formatTime(duration);
           updateProgress(progress);
 
-          if (trackId !== lastTrackId) {
+          const albumImage = payload.image_data || null;
+          const albumBackground = payload.image_url || albumImage;
+          const artistImageList = payload.artist_images || [];
+          const artworkChanged =
+            (albumImage && albumImage !== lastAlbumImage) ||
+            (albumBackground && albumBackground !== lastAlbumBackground);
+
+          // Update artwork/background not only on track change, but also when we receive a richer payload
+          // for the same track (common right after casting starts).
+          if (trackId !== lastTrackId || artworkChanged) {
             console.log('[Receiver] Track changed:', trackTitle);
             lastTrackId = trackId;
-            const albumImage = payload.image_data || null;
-            const albumBackground = payload.image_url || albumImage;
-            const artistImageList = payload.artist_images || [];
+            lastAlbumImage = albumImage;
+            lastAlbumBackground = albumBackground;
             setAlbumArt(albumImage);
             updateBackgroundSources(artistImageList, albumBackground);
           }
