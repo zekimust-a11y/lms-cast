@@ -436,7 +436,8 @@
       let volumeTimer = null;
       let artistImages = [];
       let rotationTimer = null;
-      const BACKGROUND_ROTATION_MS = 25000;
+      // Rotate faster so it feels "alive" on TV. Also helps confirm it's working.
+      const BACKGROUND_ROTATION_MS = 12000;
 
       // Debug overlays only when explicitly requested
       try {
@@ -651,15 +652,31 @@
 
         if (artistImages.length > 0) {
           console.log('[Receiver] Starting artist image rotation, images:', artistImages.length);
-          let index = 0;
-          const showNext = () => {
+          // Start from a non-zero offset for variety (prevents always showing image #1 after reconnects).
+          let index = Math.floor(Math.random() * artistImages.length);
+
+          const tryShowNext = (attemptsLeft) => {
+            if (!artistImages.length) return;
+            if (attemptsLeft <= 0) {
+              console.warn('[Receiver] All artist images failed to load, falling back to album background');
+              if (albumImage) setBackground(albumImage, true);
+              return;
+            }
+            const url = artistImages[index];
             console.log('[Receiver] Showing artist image', index + 1, 'of', artistImages.length);
-            setBackground(artistImages[index], false);
+            setBackground(url, false, () => {
+              // If an image fails, immediately skip to the next one.
+              index = (index + 1) % artistImages.length;
+              tryShowNext(attemptsLeft - 1);
+            });
             index = (index + 1) % artistImages.length;
           };
-          showNext();
+
+          // Show immediately (with skip-on-error)
+          tryShowNext(artistImages.length);
+
           if (artistImages.length > 1) {
-            rotationTimer = setInterval(showNext, BACKGROUND_ROTATION_MS);
+            rotationTimer = setInterval(() => tryShowNext(artistImages.length), BACKGROUND_ROTATION_MS);
             console.log('[Receiver] Rotation timer set for', BACKGROUND_ROTATION_MS, 'ms');
           } else {
             console.log('[Receiver] Only 1 artist image, no rotation needed');
@@ -673,7 +690,7 @@
         }
       }
 
-      function setBackground(url, blurred = false) {
+      function setBackground(url, blurred = false, onError) {
         const target = bgLayers[activeBackgroundLayer === 0 ? 1 : 0];
         const other = bgLayers[activeBackgroundLayer];
         const img = new Image();
@@ -687,6 +704,10 @@
           other.classList.remove('active');
           target.classList.add('active');
           activeBackgroundLayer = activeBackgroundLayer === 0 ? 1 : 0;
+        };
+        img.onerror = () => {
+          console.warn('[Receiver] Background image failed to load:', url);
+          if (typeof onError === 'function') onError();
         };
         img.src = url;
       }
