@@ -427,6 +427,7 @@
       let lastTrackId = '';
       let lastAlbumImage = null;
       let lastAlbumBackground = null;
+      let lastArtistImagesKey = '';
       let lastPayload = null;
       let tickTimer = null;
       let activeBackgroundLayer = 0;
@@ -517,17 +518,20 @@
           const albumImage = payload.image_data || null;
           const albumBackground = payload.image_url || albumImage;
           const artistImageList = payload.artist_images || [];
+          const artistImagesKey = Array.isArray(artistImageList) ? artistImageList.join('|') : '';
           const artworkChanged =
             (albumImage && albumImage !== lastAlbumImage) ||
             (albumBackground && albumBackground !== lastAlbumBackground);
+          const artistImagesChanged = artistImagesKey !== lastArtistImagesKey;
 
           // Update artwork/background not only on track change, but also when we receive a richer payload
           // for the same track (common right after casting starts).
-          if (trackId !== lastTrackId || artworkChanged) {
+          if (trackId !== lastTrackId || artworkChanged || artistImagesChanged) {
             console.log('[Receiver] Track changed:', trackTitle);
             lastTrackId = trackId;
             lastAlbumImage = albumImage;
             lastAlbumBackground = albumBackground;
+            lastArtistImagesKey = artistImagesKey;
             setAlbumArt(albumImage);
             updateBackgroundSources(artistImageList, albumBackground);
           }
