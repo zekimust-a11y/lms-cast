@@ -261,7 +261,9 @@
         left: 50%;
         transform: translate(-50%, -50%);
         background: rgba(0, 0, 0, 0.8);
-        padding: 32px 48px;
+        /* Keep the overlay consistently narrow (avoid jumping between square/wide) */
+        width: 180px;
+        padding: 22px 26px;
         border-radius: 18px;
         display: flex;
         flex-direction: column;
@@ -284,11 +286,16 @@
       .volume-text {
         font-size: 4.5rem;
         font-weight: 200;
+        width: 100%;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
       }
 
-      .mute-text {
-        font-size: 2rem;
-        letter-spacing: 4px;
+      #volume-overlay.muted .volume-text {
+        font-size: 2.2rem;
+        letter-spacing: 3px;
+        font-weight: 600;
         color: #ff6666;
       }
 
@@ -592,12 +599,14 @@
         
         if (isMuted) {
           volumeIcon.textContent = '🔇';
-          volumeValue.innerHTML = '<span class="mute-text">MUTED</span>';
+          volumeValue.textContent = 'MUTED';
+          volumeOverlay.classList.add('muted');
           volumeOverlay.classList.add('visible');
           clearTimeout(volumeTimer);
         } else {
           volumeIcon.textContent = percentage > 60 ? '🔊' : percentage > 0 ? '🔉' : '🔈';
-          volumeValue.textContent = percentage;
+          volumeValue.textContent = String(percentage);
+          volumeOverlay.classList.remove('muted');
           volumeOverlay.classList.add('visible');
           clearTimeout(volumeTimer);
           volumeTimer = setTimeout(() => volumeOverlay.classList.remove('visible'), 2500);
