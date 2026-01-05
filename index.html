@@ -438,6 +438,23 @@
       let rotationTimer = null;
       // Rotate artist backgrounds every 25 seconds (as requested).
       const BACKGROUND_ROTATION_MS = 25000;
+      // Filter out low-res artist/fanart backgrounds (TV looks bad otherwise).
+      // These thresholds are conservative: if we can't get a reasonably large image, we fall back to album art.
+      const MIN_BG_WIDTH = 900;
+      const MIN_BG_HEIGHT = 500;
+
+      function isLikelyLowResUrl(url) {
+        try {
+          const u = String(url || '');
+          // Common CDN sizing patterns we see (esp. thumbnails).
+          if (/\b(80|96|120|128|160|200|240|256|300|320|400)x\1\b/i.test(u)) return true;
+          if (/[?&](w|width)=(80|96|120|128|160|200|240|256|300|320|400)\b/i.test(u)) return true;
+          if (/[?&](h|height)=(80|96|120|128|160|200|240|256|300|320|400)\b/i.test(u)) return true;
+          return false;
+        } catch {
+          return false;
+        }
+      }
 
       // Debug overlays only when explicitly requested
       try {
@@ -647,7 +664,12 @@
           clearInterval(rotationTimer);
           rotationTimer = null;
         }
-        artistImages = Array.isArray(artistList) ? artistList.filter(Boolean) : [];
+        // Pre-filter obvious thumbnail URLs. Anything borderline will be rejected after load by dimension checks.
+        artistImages = Array.isArray(artistList)
+          ? artistList
+              .filter(Boolean)
+              .filter((u) => !isLikelyLowResUrl(u))
+          : [];
         console.log('[Receiver] updateBackgroundSources: got', artistImages.length, 'artist images');
 
         if (artistImages.length > 0) {
@@ -668,7 +690,7 @@
               // If an image fails, immediately skip to the next one.
               index = (index + 1) % artistImages.length;
               tryShowNext(attemptsLeft - 1);
-            });
+            }, { minWidth: MIN_BG_WIDTH, minHeight: MIN_BG_HEIGHT, reason: 'artist-bg' });
             index = (index + 1) % artistImages.length;
           };
 
@@ -690,11 +712,24 @@
         }
       }
 
-      function setBackground(url, blurred = false, onError) {
+      function setBackground(url, blurred = false, onError, opts) {
+        const minWidth = opts && typeof opts.minWidth === 'number' ? opts.minWidth : 0;
+        const minHeight = opts && typeof opts.minHeight === 'number' ? opts.minHeight : 0;
         const target = bgLayers[activeBackgroundLayer === 0 ? 1 : 0];
         const other = bgLayers[activeBackgroundLayer];
         const img = new Image();
         img.onload = () => {
+          // Skip low-resolution backgrounds (primarily affects artist_images rotation).
+          // For blurred album art we allow any size.
+          if (!blurred && (img.naturalWidth < minWidth || img.naturalHeight < minHeight)) {
+            console.warn(
+              '[Receiver] Background image too small, skipping:',
+              url,
+              `(${img.naturalWidth}x${img.naturalHeight}, min ${minWidth}x${minHeight})`
+            );
+            if (typeof onError === 'function') onError();
+            return;
+          }
           target.style.backgroundImage = `url('${url}')`;
           if (blurred) {
             target.classList.add('blurred');
