@@ -484,7 +484,10 @@
           // Explicit volume update message (e.g., from Roon volume endpoint)
           try {
             const vol = data.payload?.output?.volume ?? data.payload?.volume ?? null;
-            handleVolumeOverlay(vol);
+            // IMPORTANT: For explicit VOLUME messages, show immediately even if this is the first
+            // volume value we’ve seen (e.g., when LMS digital volume control is off and NOW_PLAYING
+            // payloads do not include output.volume).
+            handleVolumeOverlay(vol, { forceShow: true });
           } catch (e) {
             // ignore
           }
@@ -584,8 +587,9 @@
         updateProgress(nextProgress);
       }
 
-      function handleVolumeOverlay(volumeObj) {
+      function handleVolumeOverlay(volumeObj, opts) {
         if (!volumeObj) return;
+        const forceShow = !!(opts && opts.forceShow);
         const isMuted = !!volumeObj.is_muted;
         const value = typeof volumeObj.value === 'number' ? volumeObj.value : null;
         const min = typeof volumeObj.min === 'number' ? volumeObj.min : null;
@@ -614,17 +618,17 @@
           }
         }
         
-        // Only show overlay if volume actually changed (not on initial load)
+        // Only show overlay if volume actually changed (not on initial load), unless forceShow is requested.
         const volumeChanged = lastVolume !== null && (lastVolume !== percentage || lastMute !== isMuted);
         
-        if (!volumeChanged && lastVolume === null) {
+        if (!forceShow && !volumeChanged && lastVolume === null) {
           // First load - just save the values without showing overlay
           lastVolume = percentage;
           lastMute = isMuted;
           return;
         }
         
-        if (!volumeChanged) return;
+        if (!forceShow && !volumeChanged) return;
         
         lastVolume = percentage;
         lastMute = isMuted;
