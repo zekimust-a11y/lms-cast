@@ -436,8 +436,11 @@
       let volumeTimer = null;
       let artistImages = [];
       let rotationTimer = null;
+      let resetDisplayTimer = null;
       // Rotate artist backgrounds every 25 seconds (as requested).
       const BACKGROUND_ROTATION_MS = 25000;
+      // Grace period before showing "waiting for playback" on idle/pause/stop (to avoid flashing between tracks)
+      const RESET_DISPLAY_GRACE_MS = 8000;
       // Filter out low-res artist/fanart backgrounds (TV looks bad otherwise).
       // These thresholds are conservative: if we can't get a reasonably large image, we fall back to album art.
       const MIN_BG_WIDTH = 900;
@@ -499,6 +502,12 @@
         const isPlaying = state === 'playing';
         const isLoading = state === 'loading';
         const nowPlaying = payload.now_playing || null;
+
+        // Cancel any pending display reset if we get a NOW_PLAYING message
+        if (resetDisplayTimer) {
+          clearTimeout(resetDisplayTimer);
+          resetDisplayTimer = null;
+        }
 
         // During loading/transitions, keep the last display
         if (isLoading && !nowPlaying && lastPayload) {
@@ -567,9 +576,12 @@
           // Show volume overlay when volume changes (same behavior as roon-cast receiver)
           handleVolumeOverlay(payload.output?.volume);
         } else if (state === 'idle' || state === 'stopped' || state === 'paused') {
-          // Only reset display for explicit idle/stopped/paused states
-          console.log('[Receiver] Resetting display, state:', state);
-          resetDisplay();
+          // Wait a grace period before resetting display (avoids flashing between tracks)
+          console.log('[Receiver] Scheduling display reset after grace period, state:', state);
+          resetDisplayTimer = setTimeout(() => {
+            console.log('[Receiver] Grace period expired, resetting display');
+            resetDisplay();
+          }, RESET_DISPLAY_GRACE_MS);
         }
       }
 
@@ -802,6 +814,10 @@
         if (rotationTimer) {
           clearInterval(rotationTimer);
           rotationTimer = null;
+        }
+        if (resetDisplayTimer) {
+          clearTimeout(resetDisplayTimer);
+          resetDisplayTimer = null;
         }
         lastPayload = null;
       }
