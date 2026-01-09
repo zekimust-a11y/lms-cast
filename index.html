@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Now Playing - SoundStream</title>
+    <title>Now Playing - Lyriq</title>
     <script>
       // Cache-bust the receiver URL (Chromecast can aggressively cache GitHub Pages)
       try {
@@ -340,15 +340,15 @@
     </style>
   </head>
   <body>
-    <div class="build-badge" id="build-badge">SoundStream Receiver</div>
-    <div class="build-badge-center" id="build-badge-center">SoundStream Receiver</div>
+    <div class="build-badge" id="build-badge">Lyriq Receiver</div>
+    <div class="build-badge-center" id="build-badge-center">Lyriq Receiver</div>
     <div id="bg-layer-0" class="background-layer active"></div>
     <div id="bg-layer-1" class="background-layer"></div>
     <div class="background-overlay"></div>
 
     <div class="not-playing-container" id="not-playing-container">
       <div class="not-playing">
-        <h2 id="not-playing-title">SoundStream</h2>
+        <h2 id="not-playing-title">Lyriq</h2>
         <p id="not-playing-subtitle">Waiting for playback…</p>
       </div>
     </div>
@@ -463,10 +463,10 @@
         if (debug) document.body.classList.add('debug');
         const v = params.get('v') || 'no-v';
         const badge = document.getElementById('build-badge');
-        if (badge) badge.textContent = `SoundStream Receiver v=${v}`;
+        if (badge) badge.textContent = `Lyriq Receiver v=${v}`;
         const badgeCenter = document.getElementById('build-badge-center');
         if (badgeCenter) {
-          badgeCenter.textContent = `SoundStream Receiver\\nv=${v}`;
+          badgeCenter.textContent = `Lyriq Receiver\\nv=${v}`;
           setTimeout(() => badgeCenter.classList.add('fade-out'), 8000);
         }
       } catch (e) {
@@ -779,7 +779,7 @@
 
         if (notPlayingContainer) {
           notPlayingContainer.classList.remove('hidden');
-          if (notPlayingTitle) notPlayingTitle.textContent = 'SoundStream';
+          if (notPlayingTitle) notPlayingTitle.textContent = 'Lyriq';
           if (notPlayingSubtitle) notPlayingSubtitle.textContent = 'Waiting for playback…';
         }
         
