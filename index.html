@@ -578,6 +578,8 @@
 
           const albumImage = payload.image_data || null;
           const albumBackground = payload.image_url || albumImage;
+          // Album art <img> should use whichever artwork URL we have (image_data or image_url).
+          const albumArtSrc = albumImage || albumBackground || null;
 
           // IMPORTANT: payloads can arrive in stages (especially right after casting starts):
           // sometimes we get a NOW_PLAYING update without artist_images/artwork even though they
@@ -611,13 +613,18 @@
           const wouldDowngradeArtistImages =
             trackId === lastTrackId && lastArtistImagesKey && lastArtistImagesKey.length > 0 && (nextArtistListEmpty || !hasArtistImagesField);
 
-          if ((trackId !== lastTrackId) || artworkChanged || (artistImagesChanged && !wouldDowngradeArtistImages)) {
+          const isNewTrack = trackId !== lastTrackId;
+          if (isNewTrack || artworkChanged || (artistImagesChanged && !wouldDowngradeArtistImages)) {
             console.log('[Receiver] Track changed:', trackTitle);
             lastTrackId = trackId;
             lastAlbumImage = canonicalAlbumImage;
             lastAlbumBackground = canonicalAlbumBackground;
             lastArtistImagesKey = artistImagesKey;
-            setAlbumArt(albumImage);
+            // Never show a "placeholder" by clearing album art on partial payloads.
+            // Prefer keeping the previous image unless we have a new one (or track changed).
+            if (albumArtSrc) {
+              setAlbumArt(albumArtSrc);
+            }
             // Only update background sources if we have a real list update, or if artwork changed.
             // This prevents switching to "no images" default during staged payloads.
             if (!wouldDowngradeArtistImages && !keepExistingArtistImages) {
