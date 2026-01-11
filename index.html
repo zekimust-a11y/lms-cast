@@ -793,6 +793,7 @@
       function setBackground(url, blurred = false, onError, opts, onSuccess) {
         const minWidth = opts && typeof opts.minWidth === 'number' ? opts.minWidth : 0;
         const minHeight = opts && typeof opts.minHeight === 'number' ? opts.minHeight : 0;
+        const reason = opts && typeof opts.reason === 'string' ? opts.reason : '';
         const target = bgLayers[activeBackgroundLayer === 0 ? 1 : 0];
         const other = bgLayers[activeBackgroundLayer];
         const img = new Image();
@@ -816,6 +817,14 @@
           // Skip low-resolution backgrounds (primarily affects artist_images rotation).
           // For blurred album art we allow any size.
           if (!blurred && (img.naturalWidth < minWidth || img.naturalHeight < minHeight)) {
+            // For artist backgrounds, allow smaller square portraits (e.g. 600x600) to keep rotation
+            // from collapsing to a single image when only square sources (Deezer/iTunes) are available.
+            // TVs will still look OK with a centered/zoomed 600px square; it's better than no rotation.
+            const isSquareish = Math.abs(img.naturalWidth - img.naturalHeight) <= Math.max(40, Math.round(img.naturalWidth * 0.08));
+            const squareOk = reason === 'artist-bg' && isSquareish && img.naturalWidth >= 600 && img.naturalHeight >= 600;
+            if (squareOk) {
+              // accept
+            } else {
             console.warn(
               '[Receiver] Background image too small, skipping:',
               url,
@@ -823,6 +832,7 @@
             );
             if (typeof onError === 'function') onError();
             return;
+            }
           }
           target.style.backgroundImage = `url('${url}')`;
           if (blurred) {
