@@ -586,7 +586,16 @@
           const hasArtistImagesField = Array.isArray(payload.artist_images);
           const artistImageList = hasArtistImagesField ? payload.artist_images : null;
           const nextArtistImagesKey = hasArtistImagesField ? makeCanonicalListKey(artistImageList) : null;
-          const artistImagesKey = nextArtistImagesKey === null ? lastArtistImagesKey : nextArtistImagesKey;
+
+          // If we've ever had artist images for the current track, DO NOT downgrade the background
+          // just because later payloads omit artist_images or send an empty list.
+          const hasNonEmptyArtistUpdate = hasArtistImagesField && Array.isArray(artistImageList) && artistImageList.length > 0;
+          const keepExistingArtistImages =
+            trackId === lastTrackId && lastArtistImagesKey && lastArtistImagesKey.length > 0 && !hasNonEmptyArtistUpdate;
+
+          const artistImagesKey = keepExistingArtistImages
+            ? lastArtistImagesKey
+            : (nextArtistImagesKey === null ? lastArtistImagesKey : nextArtistImagesKey);
           const canonicalAlbumImage = albumImage ? canonicalizeUrl(albumImage) : null;
           const canonicalAlbumBackground = albumBackground ? canonicalizeUrl(albumBackground) : null;
           const artworkChanged =
@@ -600,7 +609,7 @@
           // explicitly has none (or is missing the field), keep the existing rotation/background.
           const nextArtistListEmpty = hasArtistImagesField && (!artistImageList || artistImageList.length === 0);
           const wouldDowngradeArtistImages =
-            trackId === lastTrackId && lastArtistImagesKey && lastArtistImagesKey.length > 0 && nextArtistListEmpty;
+            trackId === lastTrackId && lastArtistImagesKey && lastArtistImagesKey.length > 0 && (nextArtistListEmpty || !hasArtistImagesField);
 
           if ((trackId !== lastTrackId) || artworkChanged || (artistImagesChanged && !wouldDowngradeArtistImages)) {
             console.log('[Receiver] Track changed:', trackTitle);
@@ -611,7 +620,7 @@
             setAlbumArt(albumImage);
             // Only update background sources if we have a real list update, or if artwork changed.
             // This prevents switching to "no images" default during staged payloads.
-            if (!wouldDowngradeArtistImages) {
+            if (!wouldDowngradeArtistImages && !keepExistingArtistImages) {
               updateBackgroundSources(artistImageList || [], albumBackground);
             }
           }
