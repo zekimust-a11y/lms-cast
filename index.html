@@ -469,7 +469,8 @@
           }
           const u = new URL(raw);
           // Strip common cache-busters that can change frequently (causes rotation to reset).
-          const strip = ['v', 't', 'ts', 'cacheBust', 'cb', 'rnd', '_'];
+          // NOTE: keep "_" because some CDNs use it for non-cache semantics.
+          const strip = ['v', 't', 'ts', 'cacheBust', 'cb', 'rnd'];
           for (const k of strip) u.searchParams.delete(k);
           // Normalize param ordering to get stable comparisons.
           const entries = Array.from(u.searchParams.entries()).sort(([a], [b]) => a.localeCompare(b));
@@ -577,8 +578,15 @@
 
           const albumImage = payload.image_data || null;
           const albumBackground = payload.image_url || albumImage;
-          const artistImageList = payload.artist_images || [];
-          const artistImagesKey = makeCanonicalListKey(artistImageList);
+
+          // IMPORTANT: payloads can arrive in stages (especially right after casting starts):
+          // sometimes we get a NOW_PLAYING update without artist_images/artwork even though they
+          // exist. Never "downgrade" the background (artist -> default) just because a later
+          // payload omits these fields.
+          const hasArtistImagesField = Array.isArray(payload.artist_images);
+          const artistImageList = hasArtistImagesField ? payload.artist_images : null;
+          const nextArtistImagesKey = hasArtistImagesField ? makeCanonicalListKey(artistImageList) : null;
+          const artistImagesKey = nextArtistImagesKey === null ? lastArtistImagesKey : nextArtistImagesKey;
           const canonicalAlbumImage = albumImage ? canonicalizeUrl(albumImage) : null;
           const canonicalAlbumBackground = albumBackground ? canonicalizeUrl(albumBackground) : null;
           const artworkChanged =
@@ -588,14 +596,24 @@
 
           // Update artwork/background not only on track change, but also when we receive a richer payload
           // for the same track (common right after casting starts).
-          if (trackId !== lastTrackId || artworkChanged || artistImagesChanged) {
+          // Prevent a downgrade: if we already had artist images for this track, and the new payload
+          // explicitly has none (or is missing the field), keep the existing rotation/background.
+          const nextArtistListEmpty = hasArtistImagesField && (!artistImageList || artistImageList.length === 0);
+          const wouldDowngradeArtistImages =
+            trackId === lastTrackId && lastArtistImagesKey && lastArtistImagesKey.length > 0 && nextArtistListEmpty;
+
+          if ((trackId !== lastTrackId) || artworkChanged || (artistImagesChanged && !wouldDowngradeArtistImages)) {
             console.log('[Receiver] Track changed:', trackTitle);
             lastTrackId = trackId;
             lastAlbumImage = canonicalAlbumImage;
             lastAlbumBackground = canonicalAlbumBackground;
             lastArtistImagesKey = artistImagesKey;
             setAlbumArt(albumImage);
-            updateBackgroundSources(artistImageList, albumBackground);
+            // Only update background sources if we have a real list update, or if artwork changed.
+            // This prevents switching to "no images" default during staged payloads.
+            if (!wouldDowngradeArtistImages) {
+              updateBackgroundSources(artistImageList || [], albumBackground);
+            }
           }
 
           if (tickTimer) {
