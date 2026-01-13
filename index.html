@@ -353,7 +353,6 @@
     <div class="not-playing-container" id="not-playing-container">
       <div class="not-playing">
         <h2 id="not-playing-title">Lyriq</h2>
-        <p id="not-playing-subtitle">Waiting for playback…</p>
       </div>
     </div>
 
@@ -423,7 +422,7 @@
       const bottomBar = document.querySelector('.bottom-bar');
       const notPlayingContainer = document.getElementById('not-playing-container');
       const notPlayingTitle = document.getElementById('not-playing-title');
-      const notPlayingSubtitle = document.getElementById('not-playing-subtitle');
+      // Subtitle removed; keep only the large "Lyriq" splash.
       const volumeOverlay = document.getElementById('volume-overlay');
       const volumeIcon = document.getElementById('volume-icon');
       const volumeValue = document.getElementById('volume-value');
@@ -887,7 +886,6 @@
         if (notPlayingContainer) {
           notPlayingContainer.classList.remove('hidden');
           if (notPlayingTitle) notPlayingTitle.textContent = 'Lyriq';
-          if (notPlayingSubtitle) notPlayingSubtitle.textContent = 'Waiting for playback…';
         }
         
         titleEl.textContent = '';
