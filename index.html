@@ -543,6 +543,13 @@
         const isLoading = state === 'loading';
         const nowPlaying = payload.now_playing || null;
 
+        // If paused, show the splash screen instead of a stale track.
+        if (state === 'paused') {
+          console.log('[Receiver] Paused, showing splash');
+          resetDisplay();
+          return;
+        }
+
         // During loading/transitions, keep the last display
         if (isLoading && !nowPlaying && lastPayload) {
           return;
