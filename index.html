@@ -431,6 +431,7 @@
       let lastAlbumImage = null;
       let lastAlbumBackground = null;
       let lastArtistImagesKey = '';
+      let lastIsSoundCloud = false;
       let lastPayload = null;
       let tickTimer = null;
       let activeBackgroundLayer = 0;
@@ -591,13 +592,19 @@
           // Album art <img> should use whichever artwork URL we have (image_data or image_url).
           const albumArtSrc = albumImage || albumBackground || null;
 
+          // Check if this is a SoundCloud track (they only have one image per file)
+          // Use the flag from payload, or check if artist_images is explicitly empty (server sends empty for SoundCloud)
+          const isSoundCloud = payload.is_soundcloud === true || 
+            (Array.isArray(payload.artist_images) && payload.artist_images.length === 0 && albumArtSrc);
+
           // IMPORTANT: payloads can arrive in stages (especially right after casting starts):
           // sometimes we get a NOW_PLAYING update without artist_images/artwork even though they
           // exist. Never "downgrade" the background (artist -> default) just because a later
           // payload omits these fields.
+          // For SoundCloud tracks, always use empty artist_images (they only have one image per file).
           const hasArtistImagesField = Array.isArray(payload.artist_images);
-          const artistImageList = hasArtistImagesField ? payload.artist_images : null;
-          const nextArtistImagesKey = hasArtistImagesField ? makeCanonicalListKey(artistImageList) : null;
+          const artistImageList = isSoundCloud ? [] : (hasArtistImagesField ? payload.artist_images : null);
+          const nextArtistImagesKey = isSoundCloud ? '' : (hasArtistImagesField ? makeCanonicalListKey(artistImageList) : null);
 
           // If we've ever had artist images for the current track, DO NOT downgrade the background
           // just because later payloads omit artist_images or send an empty list.
@@ -624,12 +631,14 @@
             trackId === lastTrackId && lastArtistImagesKey && lastArtistImagesKey.length > 0 && (nextArtistListEmpty || !hasArtistImagesField);
 
           const isNewTrack = trackId !== lastTrackId;
-          if (isNewTrack || artworkChanged || (artistImagesChanged && !wouldDowngradeArtistImages)) {
-            console.log('[Receiver] Track changed:', trackTitle);
+          const isSoundCloudChanged = isSoundCloud !== lastIsSoundCloud;
+          if (isNewTrack || artworkChanged || (artistImagesChanged && !wouldDowngradeArtistImages) || isSoundCloudChanged) {
+            console.log('[Receiver] Track changed:', trackTitle, isSoundCloud ? '(SoundCloud)' : '');
             lastTrackId = trackId;
             lastAlbumImage = canonicalAlbumImage;
             lastAlbumBackground = canonicalAlbumBackground;
             lastArtistImagesKey = artistImagesKey;
+            lastIsSoundCloud = isSoundCloud;
             // Never show a "placeholder" by clearing album art on partial payloads.
             // Prefer keeping the previous image unless we have a new one (or track changed).
             if (albumArtSrc) {
@@ -637,6 +646,7 @@
             }
             // Only update background sources if we have a real list update, or if artwork changed.
             // This prevents switching to "no images" default during staged payloads.
+            // For SoundCloud tracks, always update to use blurred album art (no artist image cycling).
             if (!wouldDowngradeArtistImages && !keepExistingArtistImages) {
               updateBackgroundSources(artistImageList || [], albumBackground);
             }
@@ -761,6 +771,8 @@
           : [];
         console.log('[Receiver] updateBackgroundSources: got', artistImages.length, 'artist images');
 
+        // For SoundCloud tracks (or when no artist images), always use blurred album art for background
+        // SoundCloud tracks only have one image per file, so we don't cycle through artist images
         if (artistImages.length > 0) {
           console.log('[Receiver] Starting artist image rotation, images:', artistImages.length);
           // Start from a non-zero offset for variety (prevents always showing image #1 after reconnects).
@@ -792,7 +804,7 @@
           // Show immediately, then schedule the next swap 25s after.
           showNext();
         } else if (albumImage) {
-          console.log('[Receiver] No artist images, using blurred album art');
+          console.log('[Receiver] No artist images, using blurred album art for background');
           setBackground(albumImage, true);
         } else {
           console.log('[Receiver] No images available, clearing background');
