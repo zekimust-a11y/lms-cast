@@ -619,7 +619,7 @@
           bottomBar.classList.remove('hidden');
           if (notPlayingContainer) notPlayingContainer.classList.add('hidden');
           
-          const trackId = `${nowPlaying.one_line?.line1 || ''}-${nowPlaying.two_line?.line1 || ''}`;
+          const trackId = String(payload.track_key || `${nowPlaying.one_line?.line1 || ''}-${nowPlaying.two_line?.line1 || ''}`);
           let artistName = nowPlaying.two_line?.line2 || '';
           // If multiple artists separated by slashes, show only the primary artist
           if (artistName.includes(' / ')) {
@@ -942,7 +942,7 @@
 
         if (notPlayingContainer) {
           notPlayingContainer.classList.remove('hidden');
-          if (notPlayingTitle) notPlayingTitle.textContent = 'Lyryq';
+          if (notPlayingTitle) notPlayingTitle.textContent = 'Lyr';
         }
         
         titleEl.textContent = '';
