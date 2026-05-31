@@ -402,7 +402,7 @@
 
     <div class="not-playing-container" id="not-playing-container">
       <div class="not-playing">
-        <h2 id="not-playing-title">Lyr</h2>
+        <h2 id="not-playing-title"></h2>
       </div>
     </div>
 
@@ -684,6 +684,12 @@
             // Prefer keeping the previous image unless we have a new one (or track changed).
             if (albumArtSrc) {
               setAlbumArt(albumArtSrc);
+            } else if (isNewTrack) {
+              // A genuinely different track with no artwork should NOT keep the
+              // previous track's cover. Clear to a clean empty box (no stale art,
+              // no branded placeholder). Same-track partial payloads still keep
+              // whatever art we already have.
+              setAlbumArt(null);
             }
             // Only update background sources if we have a real list update, or if artwork changed.
             // This prevents switching to "no images" default during staged payloads.
@@ -942,7 +948,9 @@
 
         if (notPlayingContainer) {
           notPlayingContainer.classList.remove('hidden');
-          if (notPlayingTitle) notPlayingTitle.textContent = 'Lyr';
+          // No branded "Lyr" wordmark placeholder — keep the idle/no-artwork
+          // screen clean (blank) so it never shows where artwork should be.
+          if (notPlayingTitle) notPlayingTitle.textContent = '';
         }
         
         titleEl.textContent = '';
