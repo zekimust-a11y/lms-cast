@@ -271,7 +271,8 @@
         height: 100%;
         background: linear-gradient(90deg, #ffffff, rgba(255, 255, 255, 0.9));
         border-radius: 3px;
-        transition: width 1s linear;
+        /* Driven per-frame by the interpolated playhead clock; no CSS easing
+           (a transition would lag/smear behind the rAF updates). */
         width: 0%;
       }
 
@@ -498,7 +499,18 @@
       let lastAlbumBackground = null;
       let lastArtistImagesKey = '';
       let lastPayload = null;
-      let tickTimer = null;
+      // Smooth interpolated playhead clock (driven by requestAnimationFrame).
+      // NOW_PLAYING payloads arrive on irregular poll intervals, so we anchor a
+      // local clock to each reported seek and advance it continuously between
+      // updates instead of stepping once per payload/second.
+      let rafId = null;
+      const playClock = {
+        seek: 0,
+        anchorPerf: 0,
+        duration: 0,
+        playing: false,
+        anchored: false,
+      };
       let activeBackgroundLayer = 0;
       let lastVolume = null;
       let lastMute = null;
@@ -628,7 +640,6 @@
         }
 
         lastPayload = payload;
-        if (tickTimer) clearInterval(tickTimer);
 
         if (nowPlaying) {
           // Show the bottom bar when we have content
@@ -644,14 +655,14 @@
           const trackTitle = nowPlaying.two_line?.line1 || nowPlaying.one_line?.line1 || 'Unknown track';
           const duration = nowPlaying.length || 0;
           const seek = payload.seek_position || 0;
-          const progress = duration > 0 ? (seek / duration) * 100 : 0;
 
           titleEl.textContent = trackTitle;
           artistEl.textContent = artistName;
-          currentTimeEl.textContent = formatTime(seek);
           durationEl.textContent = formatTime(duration);
           setWaveform(payload);
-          updateProgress(progress);
+          // Smoothly drive the time + progress from an interpolated clock so the
+          // playhead doesn't jump on irregular NOW_PLAYING poll intervals.
+          syncPlayClock(seek, duration, isPlaying);
 
           const albumImage = payload.image_data || null;
           const albumBackground = payload.image_url || albumImage;
@@ -715,13 +726,6 @@
             }
           }
 
-          if (tickTimer) {
-            clearInterval(tickTimer);
-            tickTimer = null;
-          }
-          if (isPlaying) {
-            tickTimer = setInterval(() => incrementSeek(), 1000);
-          }
           // Show volume overlay when volume changes (same behavior as roon-cast receiver)
           handleVolumeOverlay(payload.output?.volume);
         } else if (state === 'idle' || state === 'stopped' || state === 'paused') {
@@ -731,18 +735,71 @@
         }
       }
 
-      function incrementSeek() {
-        if (!lastPayload || !lastPayload.now_playing) return;
-        if (lastPayload.state && lastPayload.state !== 'playing') {
-          return;
+      function perfNow() {
+        return window.performance && performance.now
+          ? performance.now()
+          : Date.now();
+      }
+
+      // Current interpolated playhead position (seconds).
+      function currentSeek() {
+        if (!playClock.playing) return playClock.seek;
+        const s = playClock.seek + (perfNow() - playClock.anchorPerf) / 1000;
+        return playClock.duration > 0
+          ? Math.min(s, playClock.duration)
+          : Math.max(0, s);
+      }
+
+      // Anchor the local clock to a reported seek. We only hard-resync when the
+      // local clock has drifted meaningfully from what LMS reports (a real seek
+      // or buffer correction), so normal poll jitter doesn't yank the playhead.
+      function syncPlayClock(reportedSeek, duration, playing) {
+        playClock.duration = duration || 0;
+        const now = perfNow();
+        const predicted =
+          playClock.anchored && playClock.playing
+            ? playClock.seek + (now - playClock.anchorPerf) / 1000
+            : reportedSeek;
+        const drift = Math.abs(reportedSeek - predicted);
+        const resuming = playing && !playClock.playing;
+        if (!playClock.anchored || resuming || drift > 1.25) {
+          playClock.seek = reportedSeek;
+          playClock.anchorPerf = now;
         }
-        lastPayload.seek_position = (lastPayload.seek_position || 0) + 1;
-        const total = lastPayload.now_playing.length || 0;
-        const seek = lastPayload.seek_position;
+        playClock.anchored = true;
+        playClock.playing = playing;
+        if (playing) {
+          startPlayheadLoop();
+        } else {
+          stopPlayheadLoop();
+          renderPlayhead(reportedSeek);
+        }
+      }
+
+      function renderPlayhead(seek) {
         currentTimeEl.textContent = formatTime(seek);
-        // Update progress to the NEXT second's position for smooth animation
-        const nextProgress = total > 0 ? ((seek + 1) / total) * 100 : 0;
-        updateProgress(nextProgress);
+        const dur = playClock.duration;
+        updateProgress(dur > 0 ? (seek / dur) * 100 : 0);
+      }
+
+      function startPlayheadLoop() {
+        if (rafId != null) return;
+        const loop = () => {
+          if (!playClock.playing) {
+            rafId = null;
+            return;
+          }
+          renderPlayhead(currentSeek());
+          rafId = requestAnimationFrame(loop);
+        };
+        rafId = requestAnimationFrame(loop);
+      }
+
+      function stopPlayheadLoop() {
+        if (rafId != null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
       }
 
       function handleVolumeOverlay(volumeObj, opts) {
@@ -1038,10 +1095,9 @@
       }
 
       function stopPlayback() {
-        if (tickTimer) {
-          clearInterval(tickTimer);
-          tickTimer = null;
-        }
+        stopPlayheadLoop();
+        playClock.playing = false;
+        playClock.anchored = false;
         if (rotationTimer) {
           clearTimeout(rotationTimer);
           rotationTimer = null;
