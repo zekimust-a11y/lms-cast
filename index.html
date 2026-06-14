@@ -275,6 +275,17 @@
         width: 0%;
       }
 
+      /* Local-file waveform (replaces the plain progress bar when available) */
+      .waveform {
+        flex: 1;
+        height: 30px;
+        display: block;
+      }
+      .waveform.hidden,
+      .progress-container.hidden {
+        display: none;
+      }
+
       .not-playing-container {
         position: fixed;
         inset: 0;
@@ -418,6 +429,7 @@
           <div class="progress-container">
             <div class="progress-bar" id="progress-bar"></div>
           </div>
+          <canvas class="waveform hidden" id="waveform"></canvas>
           <span class="time duration">0:00</span>
         </div>
       </div>
@@ -468,6 +480,10 @@
       const currentTimeEl = document.querySelector('.time.current');
       const durationEl = document.querySelector('.time.duration');
       const progressBar = document.getElementById('progress-bar');
+      const progressContainer = document.querySelector('.progress-container');
+      const waveformCanvas = document.getElementById('waveform');
+      const waveformCtx = waveformCanvas ? waveformCanvas.getContext('2d') : null;
+      let currentBars = null;
       const albumArt = document.getElementById('album-art');
       const bottomBar = document.querySelector('.bottom-bar');
       const notPlayingContainer = document.getElementById('not-playing-container');
@@ -634,6 +650,7 @@
           artistEl.textContent = artistName;
           currentTimeEl.textContent = formatTime(seek);
           durationEl.textContent = formatTime(duration);
+          setWaveform(payload);
           updateProgress(progress);
 
           const albumImage = payload.image_data || null;
@@ -928,7 +945,62 @@
       }
 
       function updateProgress(progress) {
-        progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+        const pct = Math.min(100, Math.max(0, progress));
+        if (currentBars) {
+          drawWaveform(pct);
+        } else {
+          progressBar.style.width = `${pct}%`;
+        }
+      }
+
+      // Accept/replace the per-track waveform bars from a NOW_PLAYING payload.
+      // Bars are normalized 0..1. Toggles between the plain progress bar and the
+      // waveform; payloads can arrive in stages, so this runs on every update.
+      function setWaveform(payload) {
+        const wf = payload && payload.waveform;
+        const bars =
+          wf && Array.isArray(wf.bars) && wf.bars.length ? wf.bars : null;
+        currentBars = bars;
+        if (bars) {
+          if (waveformCanvas) waveformCanvas.classList.remove('hidden');
+          if (progressContainer) progressContainer.classList.add('hidden');
+        } else {
+          if (waveformCanvas) waveformCanvas.classList.add('hidden');
+          if (progressContainer) progressContainer.classList.remove('hidden');
+        }
+      }
+
+      function drawWaveform(progressPct) {
+        if (!waveformCtx || !waveformCanvas || !currentBars) return;
+        const dpr = window.devicePixelRatio || 1;
+        const cssW = waveformCanvas.clientWidth;
+        const cssH = waveformCanvas.clientHeight;
+        if (!cssW || !cssH) return; // not laid out yet; will redraw next tick
+        if (waveformCanvas.width !== Math.round(cssW * dpr)) {
+          waveformCanvas.width = Math.round(cssW * dpr);
+          waveformCanvas.height = Math.round(cssH * dpr);
+        }
+        const ctx = waveformCtx;
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, cssW, cssH);
+        const n = currentBars.length;
+        const slot = cssW / n;
+        const barW = Math.max(1.5, slot * 0.6);
+        const mid = cssH / 2;
+        const maxBar = cssH * 0.92;
+        const playedTo = (Math.min(100, Math.max(0, progressPct)) / 100) * cssW;
+        for (let i = 0; i < n; i += 1) {
+          const x = i * slot + (slot - barW) / 2;
+          const v = Math.max(0, Math.min(1, currentBars[i] || 0));
+          const h = Math.max(2, v * maxBar);
+          const played = x + barW / 2 <= playedTo;
+          ctx.fillStyle = played
+            ? 'rgba(255, 255, 255, 0.95)'
+            : 'rgba(255, 255, 255, 0.32)';
+          ctx.fillRect(x, mid - h / 2, barW, h);
+        }
+        ctx.restore();
       }
 
       function formatTime(seconds) {
@@ -960,6 +1032,7 @@
         albumArt.classList.remove('loaded');
         albumArt.removeAttribute('src');
         updateBackgroundSources([], null);
+        setWaveform(null);
         updateProgress(0);
         stopPlayback();
       }
