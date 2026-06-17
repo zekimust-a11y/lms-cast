@@ -238,11 +238,13 @@
       .progress-row {
         display: flex;
         align-items: center;
-        gap: 18px;
+        /* Tight gap so the waveform fills the span between the time markers
+           instead of floating squished in the centre. */
+        gap: 12px;
       }
 
       .time {
-        width: 70px;
+        width: 56px;
         font-variant-numeric: tabular-nums;
         color: rgba(255, 255, 255, 0.75);
         display: inline-flex;
@@ -251,9 +253,17 @@
         min-height: 1em;
       }
 
-      .time.duration {
+      /* Hug the time numbers up against the waveform (start time to the right
+         edge of its box, duration to the left of its box) so there's no dead
+         space between each marker and the scrubber. */
+      .time.current {
         justify-content: flex-end;
         text-align: right;
+      }
+
+      .time.duration {
+        justify-content: flex-start;
+        text-align: left;
       }
 
       .progress-container {
