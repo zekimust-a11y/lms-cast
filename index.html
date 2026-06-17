@@ -238,9 +238,9 @@
       .progress-row {
         display: flex;
         align-items: center;
-        /* Tight gap so the waveform fills the span between the time markers
-           instead of floating squished in the centre. */
-        gap: 12px;
+        /* Modest gap so the waveform fills most of the span between the time
+           markers without crowding them. */
+        gap: 16px;
       }
 
       .time {
@@ -253,17 +253,17 @@
         min-height: 1em;
       }
 
-      /* Hug the time numbers up against the waveform (start time to the right
-         edge of its box, duration to the left of its box) so there's no dead
-         space between each marker and the scrubber. */
+      /* Start time hugs the LEFT edge of its box so it lines up exactly with
+         the title/artist; duration hugs the right edge to line up with the
+         right edge of the strip. */
       .time.current {
-        justify-content: flex-end;
-        text-align: right;
+        justify-content: flex-start;
+        text-align: left;
       }
 
       .time.duration {
-        justify-content: flex-start;
-        text-align: left;
+        justify-content: flex-end;
+        text-align: right;
       }
 
       .progress-container {
