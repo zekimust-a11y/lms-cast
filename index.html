@@ -676,6 +676,7 @@
 
           const albumImage = payload.image_data || null;
           const albumBackground = payload.image_url || albumImage;
+          coreBackdropColor = parseHexColor(payload.background_color);
           // Album art <img> should use whichever artwork URL we have (image_data or image_url).
           const albumArtSrc = albumImage || albumBackground || null;
 
@@ -1024,6 +1025,18 @@
         });
       }
 
+      // The Core sends `background_color` (it can read the cover's pixels; this
+      // page cannot, because a Qobuz cover carries no CORS headers and taints a
+      // canvas). Sampling here is only the fallback for an embedded cover.
+      let coreBackdropColor = null;
+
+      function parseHexColor(value) {
+        const m = /^#?([0-9a-f]{6})$/i.exec(String(value || '').trim());
+        if (!m) return null;
+        const n = parseInt(m[1], 16);
+        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+      }
+
       function setColorBackdropFromAlbum(albumImage) {
         const paint = (rgb) => {
           const base = rgb || { r: 26, g: 28, b: 33 };
@@ -1040,6 +1053,7 @@
           target.classList.add('active');
           activeBackgroundLayer = activeBackgroundLayer === 0 ? 1 : 0;
         };
+        if (coreBackdropColor) return paint(coreBackdropColor);
         albumBackdropColor(albumImage).then(paint).catch(() => paint(null));
       }
 
