@@ -732,7 +732,7 @@
             // Only update background sources if we have a real list update, or if artwork changed.
             // This prevents switching to "no images" default during staged payloads.
             if (!wouldDowngradeArtistImages && !keepExistingArtistImages) {
-              updateBackgroundSources(artistImageList || [], albumBackground);
+              updateBackgroundSources(artistImageList || [], albumBackground, albumImage);
             }
           }
 
@@ -888,7 +888,11 @@
         }
       }
 
-      function updateBackgroundSources(artistList, albumImage) {
+      // `colorSource` is the copy of the cover that can actually be SAMPLED: an
+      // embedded data URI where we have one, since a plain-http cover URL is
+      // blocked outright on this HTTPS receiver and would yield no colour.
+      function updateBackgroundSources(artistList, albumImage, colorSource) {
+        const sampleFrom = colorSource || albumImage;
         if (rotationTimer) clearTimeout(rotationTimer);
         rotationTimer = null;
         rotationIndex = 0;
@@ -902,9 +906,12 @@
         console.log('[Receiver] updateBackgroundSources: got', artistImages.length, 'artist images');
 
         if (artistImages.length > 0) {
-          console.log('[Receiver] Starting artist image rotation, images:', artistImages.length);
-          // Start from a non-zero offset for variety (prevents always showing image #1 after reconnects).
-          rotationIndex = Math.floor(Math.random() * artistImages.length);
+          // One image is the normal case now — the Core settles on a single Qobuz
+          // portrait per artist deliberately, so nothing rotates and nothing
+          // shuffles. A list only appears when several photographs are known.
+          const single = artistImages.length === 1;
+          rotationIndex = single ? 0 : Math.floor(Math.random() * artistImages.length);
+          let failures = 0;
 
           const scheduleNext = () => {
             if (rotationTimer) clearTimeout(rotationTimer);
@@ -923,21 +930,117 @@
             setBackground(
               url,
               false,
-              () => scheduleNext(),
+              () => {
+                // Every candidate refused (too small, or would not load). Leaving
+                // the previous track's backdrop on screen is what made this look
+                // like the display was showing another record; take the colour.
+                failures += 1;
+                if (failures >= artistImages.length) {
+                  console.warn('[Receiver] Artist images unusable, using album colour backdrop');
+                  setColorBackdropFromAlbum(sampleFrom);
+                }
+                scheduleNext();
+              },
               { minWidth: MIN_BG_WIDTH, minHeight: MIN_BG_HEIGHT, reason: 'artist-bg' },
-              () => scheduleNext()
+              () => {
+                failures = 0;
+                // A single settled portrait has nothing to swap to.
+                if (!single) scheduleNext();
+              }
             );
           };
 
           // Show immediately, then schedule the next swap 25s after.
           showNext();
         } else if (albumImage) {
-          console.log('[Receiver] No artist images, using blurred album art');
-          setBackground(albumImage, true);
+          // The album cover is NOT used as the backdrop. Enlarged and blurred it
+          // reads as "the wrong picture" — a sleeve nobody asked for, often the
+          // previous one — so the fallback is a colour taken FROM the cover.
+          console.log('[Receiver] No artist images, using album colour backdrop');
+          setColorBackdropFromAlbum(sampleFrom);
         } else {
           console.log('[Receiver] No images available, clearing background');
           clearBackground();
         }
+      }
+
+      // Backdrop colour derived from the album cover, for when there is no
+      // artist photograph. Sampling happens here rather than on the Core: the
+      // cover is already in hand (usually as an embedded data URI, always
+      // canvas-safe), and a colour cannot fail to load the way an image can.
+      const albumColorCache = new Map();
+
+      function albumBackdropColor(url) {
+        const key = String(url || '');
+        if (!key) return Promise.resolve(null);
+        if (albumColorCache.has(key)) {
+          return Promise.resolve(albumColorCache.get(key));
+        }
+        return new Promise((resolve) => {
+          const img = new Image();
+          if (!/^data:/i.test(key)) img.crossOrigin = 'anonymous';
+          const done = (value) => {
+            albumColorCache.set(key, value);
+            resolve(value);
+          };
+          const timer = setTimeout(() => done(null), 6000);
+          img.onerror = () => {
+            clearTimeout(timer);
+            done(null);
+          };
+          img.onload = () => {
+            clearTimeout(timer);
+            try {
+              const size = 32;
+              const canvas = document.createElement('canvas');
+              canvas.width = size;
+              canvas.height = size;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, size, size);
+              const { data } = ctx.getImageData(0, 0, size, size);
+              let r = 0, g = 0, b = 0, n = 0;
+              for (let i = 0; i < data.length; i += 4) {
+                const pr = data[i], pg = data[i + 1], pb = data[i + 2];
+                const brightness = (pr * 299 + pg * 587 + pb * 114) / 1000;
+                // Ignore near-black and near-white so a dark sleeve with a white
+                // border doesn't average out to grey.
+                if (brightness < 18 || brightness > 242) continue;
+                r += pr; g += pg; b += pb; n += 1;
+              }
+              if (!n) return done(null);
+              done({
+                r: Math.round(r / n),
+                g: Math.round(g / n),
+                b: Math.round(b / n),
+              });
+            } catch (err) {
+              // A cover served without CORS headers taints the canvas. Nothing
+              // to recover — the neutral backdrop covers it.
+              console.warn('[Receiver] Album colour unavailable:', err && err.message);
+              done(null);
+            }
+          };
+          img.src = key;
+        });
+      }
+
+      function setColorBackdropFromAlbum(albumImage) {
+        const paint = (rgb) => {
+          const base = rgb || { r: 26, g: 28, b: 33 };
+          // Deepen it: this sits behind white text with the standard overlay on
+          // top, so a bright average would wash the type out.
+          const dim = (v, f) => Math.max(0, Math.min(255, Math.round(v * f)));
+          const near = `rgb(${dim(base.r, 0.55)}, ${dim(base.g, 0.55)}, ${dim(base.b, 0.55)})`;
+          const far = `rgb(${dim(base.r, 0.18)}, ${dim(base.g, 0.18)}, ${dim(base.b, 0.18)})`;
+          const target = bgLayers[activeBackgroundLayer === 0 ? 1 : 0];
+          const other = bgLayers[activeBackgroundLayer];
+          target.style.backgroundImage = `radial-gradient(circle at 30% 25%, ${near} 0%, ${far} 70%, #08090b 100%)`;
+          target.classList.remove('blurred');
+          other.classList.remove('active');
+          target.classList.add('active');
+          activeBackgroundLayer = activeBackgroundLayer === 0 ? 1 : 0;
+        };
+        albumBackdropColor(albumImage).then(paint).catch(() => paint(null));
       }
 
       function setBackground(url, blurred = false, onError, opts, onSuccess) {
@@ -971,7 +1074,12 @@
             // from collapsing to a single image when only square sources (Deezer/iTunes) are available.
             // TVs will still look OK with a centered/zoomed 600px square; it's better than no rotation.
             const isSquareish = Math.abs(img.naturalWidth - img.naturalHeight) <= Math.max(40, Math.round(img.naturalWidth * 0.08));
-            const squareOk = reason === 'artist-bg' && isSquareish && img.naturalWidth >= 600 && img.naturalHeight >= 600;
+            // 450, not 600: Qobuz's LARGEST artist portrait is about 550x546 —
+            // /large/ is the biggest variant it serves (xlarge/original 403).
+            // The old 600 floor therefore rejected every Qobuz portrait, and the
+            // receiver fell back to blurred album art, which is what looked like
+            // "the wrong album cover on the television".
+            const squareOk = reason === 'artist-bg' && isSquareish && img.naturalWidth >= 450 && img.naturalHeight >= 450;
             if (squareOk) {
               // accept
             } else {
