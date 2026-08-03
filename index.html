@@ -674,8 +674,17 @@
           // playhead doesn't jump on irregular NOW_PLAYING poll intervals.
           syncPlayClock(seek, duration, isPlaying);
 
-          const albumImage = payload.image_data || null;
-          const albumBackground = payload.image_url || albumImage;
+          // The Core sends its "Lyr" SVG placeholder rather than an empty field
+          // when a track has no artwork, so a receiver that ignored empty
+          // payloads could not stick on the previous track's cover. We want the
+          // no-artwork guarantee without the branded glyph: treat the placeholder
+          // as the absence it stands for, and let the isNewTrack branch below do
+          // the clearing. This is also what the `/now-playing` web page shows for
+          // the same track, which is the point.
+          const rawAlbumImage = payload.image_data || null;
+          const rawAlbumBackground = payload.image_url || rawAlbumImage;
+          const albumImage = isPlaceholderArtwork(rawAlbumImage) ? null : rawAlbumImage;
+          const albumBackground = isPlaceholderArtwork(rawAlbumBackground) ? null : rawAlbumBackground;
           coreBackdropColor = parseHexColor(payload.background_color);
           // Album art <img> should use whichever artwork URL we have (image_data or image_url).
           const albumArtSrc = albumImage || albumBackground || null;
@@ -934,11 +943,12 @@
               () => {
                 // Every candidate refused (too small, or would not load). Leaving
                 // the previous track's backdrop on screen is what made this look
-                // like the display was showing another record; take the colour.
+                // like the display was showing another record; fall through to the
+                // artwork.
                 failures += 1;
                 if (failures >= artistImages.length) {
-                  console.warn('[Receiver] Artist images unusable, using album colour backdrop');
-                  setColorBackdropFromAlbum(sampleFrom);
+                  console.warn('[Receiver] Artist images unusable, falling back to artwork backdrop');
+                  setArtworkBackdrop(albumImage, sampleFrom);
                 }
                 scheduleNext();
               },
@@ -954,15 +964,40 @@
           // Show immediately, then schedule the next swap 25s after.
           showNext();
         } else if (albumImage) {
-          // The album cover is NOT used as the backdrop. Enlarged and blurred it
-          // reads as "the wrong picture" — a sleeve nobody asked for, often the
-          // previous one — so the fallback is a colour taken FROM the cover.
-          console.log('[Receiver] No artist images, using album colour backdrop');
-          setColorBackdropFromAlbum(sampleFrom);
+          console.log('[Receiver] No artist images, using artwork backdrop');
+          setArtworkBackdrop(albumImage, sampleFrom);
         } else {
           console.log('[Receiver] No images available, clearing background');
           clearBackground();
         }
+      }
+
+      // The Core's own "there is no artwork" answer, which must not be blurred
+      // into a backdrop — it is a grey glyph, and enlarged it looks like a fault.
+      function isPlaceholderArtwork(url) {
+        return /^data:image\/svg/i.test(String(url || ''));
+      }
+
+      // No artist photograph: show the artwork itself, enlarged and blurred.
+      //
+      // This is what gives live radio a backdrop — a station's logo is the only
+      // picture that exists for a stream, and a flat colour beside a small logo
+      // left most of the screen empty. Falls back to the sampled colour when the
+      // artwork is missing, a placeholder, or refuses to load (a plain-http cover
+      // is blocked outright on this HTTPS receiver).
+      function setArtworkBackdrop(albumImage, sampleFrom) {
+        if (!albumImage || isPlaceholderArtwork(albumImage)) {
+          return setColorBackdropFromAlbum(sampleFrom);
+        }
+        setBackground(
+          albumImage,
+          true,
+          () => {
+            console.warn('[Receiver] Artwork backdrop unusable, using colour');
+            setColorBackdropFromAlbum(sampleFrom);
+          },
+          { reason: 'album-bg' }
+        );
       }
 
       // Backdrop colour derived from the album cover, for when there is no
