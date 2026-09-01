@@ -529,6 +529,7 @@
       let rotationTimer = null;
       let bgLoadInProgress = false;
       let bgCurrentLoad = null;
+      let bgCurrentLoadTimeout = null;
       let rotationIndex = 0;
       // Rotate artist backgrounds every 25 seconds (as requested).
       const BACKGROUND_ROTATION_MS = 25000;
@@ -928,9 +929,29 @@
             rotationTimer = setTimeout(() => showNext(), BACKGROUND_ROTATION_MS);
           };
 
-          const showNext = () => {
+          // `firstShow` means "these are NEW sources, put one up now". It must not
+          // be subject to the anti-pile-up wait below, and this is the bug that
+          // made the artist photograph take about half a minute to appear
+          // (reported 2026-09-01, introduced 2026-08-03).
+          //
+          // Every track change delivers TWO messages a fraction of a second
+          // apart: the immediate one, which carries no artist images yet, and the
+          // enriched one, which carries the portrait (measured on 1 Sep: the Core
+          // sent both within the same second). The immediate one now paints the
+          // blurred-artwork backdrop, and that starts an image load — so when the
+          // portrait arrived milliseconds later, `bgLoadInProgress` was true and
+          // the portrait was pushed onto the next ROTATION tick, a full 25
+          // seconds away. Before the artwork backdrop existed the same branch
+          // painted a colour, which loads nothing, so the portrait went up at
+          // once; that is why this "used to be almost instant".
+          //
+          // A newly-arrived portrait should supersede a load already in flight,
+          // which `setBackground` handles safely: it detaches the old image's
+          // handlers and cancels its timeout, so the one it replaces can neither
+          // paint nor report.
+          const showNext = (firstShow = false) => {
             if (!artistImages.length) return;
-            if (bgLoadInProgress) {
+            if (bgLoadInProgress && !firstShow) {
               // Don't pile up loads; retry on the next scheduled tick.
               return scheduleNext();
             }
@@ -962,7 +983,7 @@
           };
 
           // Show immediately, then schedule the next swap 25s after.
-          showNext();
+          showNext(true);
         } else if (albumImage) {
           console.log('[Receiver] No artist images, using artwork backdrop');
           setArtworkBackdrop(albumImage, sampleFrom);
@@ -1100,21 +1121,34 @@
         const other = bgLayers[activeBackgroundLayer];
         const img = new Image();
         bgLoadInProgress = true;
-        // Drop references to any previous in-flight load so it can be GC'd.
+        // Drop references to any previous in-flight load so it can be GC'd, and
+        // cancel its timeout as well. Detaching the handlers alone left the timer
+        // armed: twelve seconds after a load was superseded it would still fire,
+        // clear the in-progress flag out from under the load that replaced it, and
+        // run the SUPERSEDED caller's onError — which for the artwork backdrop
+        // repaints a flat colour, wiping the artist portrait off the screen long
+        // after it had settled.
         if (bgCurrentLoad) {
           try { bgCurrentLoad.onload = null; } catch {}
           try { bgCurrentLoad.onerror = null; } catch {}
+        }
+        if (bgCurrentLoadTimeout) {
+          clearTimeout(bgCurrentLoadTimeout);
+          bgCurrentLoadTimeout = null;
         }
         bgCurrentLoad = img;
         const loadTimeout = setTimeout(() => {
           try {
             console.warn('[Receiver] Background image load timeout, skipping:', url);
           } catch {}
+          bgCurrentLoadTimeout = null;
           bgLoadInProgress = false;
           if (typeof onError === 'function') onError();
         }, 12000);
+        bgCurrentLoadTimeout = loadTimeout;
         img.onload = () => {
           clearTimeout(loadTimeout);
+          bgCurrentLoadTimeout = null;
           bgLoadInProgress = false;
           // Skip low-resolution backgrounds (primarily affects artist_images rotation).
           // For blurred album art we allow any size.
@@ -1154,6 +1188,7 @@
         };
         img.onerror = () => {
           clearTimeout(loadTimeout);
+          bgCurrentLoadTimeout = null;
           bgLoadInProgress = false;
           console.warn('[Receiver] Background image failed to load:', url);
           if (typeof onError === 'function') onError();
