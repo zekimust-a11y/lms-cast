@@ -645,6 +645,8 @@
         if (!data) return;
         if (data.type === 'NOW_PLAYING' || data.type === 'STATE') {
           applyNowPlaying(data.payload || {});
+        } else if (data.type === 'DIAG_REQUEST') {
+          sendDiag('request', true);
         } else if (data.type === 'PAUSE') {
           console.log('Received PAUSE command, resetting display');
           resetDisplay();
@@ -700,7 +702,7 @@
         }
       }
 
-      function sendDiag(reason) {
+      function sendDiag(reason, withSnapshot) {
         try {
           const lib = window.LyrDisplays;
           const cv = document.getElementById('display-canvas');
@@ -733,6 +735,15 @@
             },
             textProbe: textProbe(),
             errors: diagErrors.slice(),
+            // A small JPEG of what the style canvas shows, on request only.
+            snapshot: withSnapshot && cv && !document.getElementById('display-view').hidden ? (() => {
+              try {
+                const t = document.createElement('canvas');
+                t.width = 640; t.height = 360;
+                t.getContext('2d').drawImage(cv, 0, 0, 640, 360);
+                return t.toDataURL('image/jpeg', 0.72);
+              } catch (e) { return 'snapshot failed: ' + String(e && e.message || e); }
+            })() : null,
           });
         } catch (e) {
           // nothing else to do from here
