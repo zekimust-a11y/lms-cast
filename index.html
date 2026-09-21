@@ -656,6 +656,11 @@
       let displayRenderer = null;
       let displayKey = '';
       let displayLevelsKey = '';
+      let displaySpectrumKey = '';
+      let displayLyricsKey = '';
+      // The last style the Core asked for, so a PAUSE (which carries no
+      // payload) can keep the clock up as a standby screen.
+      let lastDisplayView = '';
 
       function hideDisplayStyle() {
         if (displayViewEl) displayViewEl.hidden = true;
@@ -679,6 +684,8 @@
             displayRenderer = null;
             displayKey = '';
             displayLevelsKey = '';
+            displaySpectrumKey = '';
+            displayLyricsKey = '';
           }
           hideDisplayStyle();
           return false;
@@ -688,6 +695,8 @@
           // Chromecast GPUs are weak: 30 fps is plenty for needles and reels.
           displayRenderer = lib.create(displayCanvas, { view, variant: variant || undefined, maxFps: 30 });
           displayLevelsKey = '';
+          displaySpectrumKey = '';
+          displayLyricsKey = '';
         } else if (key !== displayKey) {
           displayRenderer.setView(view, variant || undefined);
         }
@@ -710,11 +719,37 @@
           displayLevelsKey = lvKey;
           displayRenderer.setLevels(lv && lv.data ? lib.decodeLevels(lv) : null);
         }
+        // Lyrics for the lyrics style (the Core resolves and sends them).
+        const ly = payload.lyrics;
+        const lyKey = info.trackId + '|' + (ly ? (ly.synced || ly.plain || '').length + (ly.instrumental ? 'i' : '') : 'none');
+        if (lyKey !== displayLyricsKey && typeof displayRenderer.setLyrics === 'function') {
+          displayLyricsKey = lyKey;
+          displayRenderer.setLyrics(ly ? { synced: ly.synced || null, plain: ly.plain || null, instrumental: !!ly.instrumental } : null);
+        }
+        // Spectrum bands, when the Core has analysed them (older renderers
+        // without setSpectrum simply ignore it).
+        const sp = payload.spectrum;
+        const spKey = sp && sp.data ? info.trackId + '|' + sp.bucketSeconds + '|' + sp.data.length : info.trackId + '|none';
+        if (spKey !== displaySpectrumKey && typeof displayRenderer.setSpectrum === 'function') {
+          displaySpectrumKey = spKey;
+          displayRenderer.setSpectrum(sp && sp.data && lib.decodeSpectrum ? lib.decodeSpectrum(sp) : null);
+        }
+        displayViewEl.hidden = false;
+        return true;
+      }
+
+      // Clock is a standby screen: keep it up, showing just the time, when the
+      // music pauses or stops. Every other style resets as before.
+      function keepClockOnIdle() {
+        if (lastDisplayView !== 'clock' || !displayRenderer) return false;
+        displayRenderer.setTrack({ title: '', artist: '' });
+        displayRenderer.setPosition(0, false, 0);
         displayViewEl.hidden = false;
         return true;
       }
 
       function applyNowPlaying(payload) {
+        if (payload && payload.display_view) lastDisplayView = String(payload.display_view);
         const state = payload.state || 'idle';
         const isPlaying = state === 'playing';
         const isLoading = state === 'loading';
@@ -1375,8 +1410,8 @@
       function resetDisplay() {
         // Hide the entire bottom bar for blank screen
         bottomBar.classList.add('hidden');
-        // Paused/idle reads the same in every display style.
-        hideDisplayStyle();
+        // Paused/idle reads the same in every display style, except the clock.
+        if (!keepClockOnIdle()) hideDisplayStyle();
 
         if (notPlayingContainer) {
           notPlayingContainer.classList.remove('hidden');
