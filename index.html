@@ -475,7 +475,19 @@
     <!-- A copy of lyriqapp's server/templates/tv-displays/renderer.js. This page
          is https and cannot load it from an http Core, so it ships here; keep the
          two identical (lyriqapp: scripts/cast/sync-renderer.sh). -->
-    <script src="tv-displays/renderer.js"></script>
+    <script>
+      // Loaded with a cache-buster: GitHub Pages lets the device keep files for
+      // 10 minutes, and a Chromecast kept running an old renderer after a
+      // publish (old turntable, no lyrics/clock/spectrum). Styles appear from
+      // the first NOW_PLAYING after it loads; until then Classic shows.
+      (function () {
+        var s = document.createElement('script');
+        s.src = 'tv-displays/renderer.js?t=' + Date.now();
+        s.onload = function () { window.__rendererLoadedAt = Date.now(); };
+        s.onerror = function () { window.__rendererLoadError = 'renderer.js failed to load'; };
+        document.head.appendChild(s);
+      })();
+    </script>
     <script>
       const CAST_NAMESPACE = 'urn:x-cast:com.zeki.rooncast';
       const context = cast.framework.CastReceiverContext.getInstance();
@@ -650,6 +662,84 @@
         }
       }
 
+      // --- Receiver diagnostics ------------------------------------------------
+      // This device has no remote debugging, so the receiver reports what it
+      // is and what went wrong to the Core, which shows the last report in
+      // /api/cast/diagnostics (receiverDiag).
+      const diagErrors = [];
+      function noteDiagError(where, e) {
+        const msg = where + ': ' + (e && (e.stack || e.message) ? String(e.stack || e.message) : String(e));
+        diagErrors.push(msg.slice(0, 500));
+        while (diagErrors.length > 8) diagErrors.shift();
+      }
+      window.addEventListener('error', (ev) => { noteDiagError('error', ev.error || ev.message); sendDiag('error'); });
+      window.addEventListener('unhandledrejection', (ev) => { noteDiagError('rejection', ev.reason); sendDiag('rejection'); });
+
+      // Draw a centred "M" on a scratch canvas and find where it landed: an
+      // empirical check of textAlign and font loading on this browser.
+      function textProbe() {
+        try {
+          const c = document.createElement('canvas');
+          c.width = 400; c.height = 80;
+          const x = c.getContext('2d');
+          x.fillStyle = '#000'; x.fillRect(0, 0, 400, 80);
+          x.fillStyle = '#fff'; x.font = '800 60px "Big Shoulders Display", "Arial Narrow", sans-serif';
+          x.textAlign = 'center'; x.textBaseline = 'middle';
+          x.fillText('MMM', 200, 40);
+          const d = x.getImageData(0, 0, 400, 80).data;
+          let lo = 400, hi = -1;
+          for (let col = 0; col < 400; col++) {
+            for (let row = 0; row < 80; row++) {
+              if (d[(row * 400 + col) * 4] > 128) { if (col < lo) lo = col; if (col > hi) hi = col; break; }
+            }
+          }
+          const measured = x.measureText('MMM').width;
+          return { inkLeft: lo, inkRight: hi, inkCentre: hi >= 0 ? (lo + hi) / 2 : null, expectCentre: 200, measureWidth: Math.round(measured), textAlignAfter: x.textAlign };
+        } catch (e) {
+          return { error: String(e && e.message || e) };
+        }
+      }
+
+      function sendDiag(reason) {
+        try {
+          const lib = window.LyrDisplays;
+          const cv = document.getElementById('display-canvas');
+          const r = cv ? cv.getBoundingClientRect() : null;
+          const proto = window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype;
+          const fontsOk = (f) => { try { return document.fonts ? document.fonts.check(f) : null; } catch (e) { return null; } };
+          context.sendCustomMessage(CAST_NAMESPACE, undefined, {
+            type: 'RECEIVER_DIAG',
+            reason: String(reason || ''),
+            ua: navigator.userAgent,
+            screen: { w: window.screen && screen.width, h: window.screen && screen.height },
+            inner: { w: window.innerWidth, h: window.innerHeight },
+            dpr: window.devicePixelRatio,
+            hidden: document.hidden,
+            renderer: lib ? { views: lib.VIEWS.map((v) => v.id), loadedAt: window.__rendererLoadedAt || null } : { missing: true, error: window.__rendererLoadError || null },
+            view: displayKey || null,
+            canvas: cv ? { w: cv.width, h: cv.height, css: r ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null } : null,
+            features: proto ? {
+              roundRect: typeof proto.roundRect === 'function',
+              conic: typeof proto.createConicGradient === 'function',
+              letterSpacing: 'letterSpacing' in proto,
+              filter: 'filter' in proto,
+              resizeObserver: typeof window.ResizeObserver === 'function',
+            } : null,
+            fonts: {
+              status: document.fonts ? document.fonts.status : null,
+              bigShoulders: fontsOk('800 20px "Big Shoulders Display"'),
+              plexSans: fontsOk('500 20px "IBM Plex Sans"'),
+              plexMono: fontsOk('500 20px "IBM Plex Mono"'),
+            },
+            textProbe: textProbe(),
+            errors: diagErrors.slice(),
+          });
+        } catch (e) {
+          // nothing else to do from here
+        }
+      }
+      setTimeout(() => sendDiag('start'), 4000);
+
       // --- Display styles -----------------------------------------------------
       const displayViewEl = document.getElementById('display-view');
       const displayCanvas = document.getElementById('display-canvas');
@@ -700,6 +790,7 @@
         } else if (key !== displayKey) {
           displayRenderer.setView(view, variant || undefined);
         }
+        if (key !== displayKey) setTimeout(() => sendDiag('view ' + key), 2500);
         displayKey = key;
         const audio = payload.audio || {};
         displayRenderer.setTrack({
@@ -870,6 +961,7 @@
             }
           }
 
+          try {
           applyDisplayStyle(payload, {
             trackId,
             title: trackTitle,
@@ -880,6 +972,12 @@
             duration,
             playing: isPlaying,
           });
+          } catch (e) {
+            // A style that throws must not take the whole screen with it.
+            noteDiagError('applyDisplayStyle', e);
+            hideDisplayStyle();
+            sendDiag('style-error');
+          }
 
           // Show volume overlay when volume changes (same behavior as roon-cast receiver)
           handleVolumeOverlay(payload.output?.volume);
