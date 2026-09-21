@@ -962,7 +962,8 @@
   }
   var TT_VARIANTS = [["modern", "Modern"], ["wood", "Wood classic"]];
   // Belt scuffs: [position round the loop 0..1, length, lighter?].
-  var BELT_MARKS = [[0.03, 4, 1], [0.11, 8, 0], [0.19, 3, 1], [0.34, 10, 0], [0.41, 5, 1], [0.58, 6, 0], [0.66, 9, 1], [0.79, 4, 0], [0.88, 7, 1]];
+  // Four faint marks: nine was "way too much grain" (user, 2026-09-21).
+  var BELT_MARKS = [[0.07, 5, 1], [0.31, 7, 0], [0.56, 4, 1], [0.82, 6, 0]];
 
   IMPL.turntable = {
     bg: "#0a0a0b",
@@ -1220,7 +1221,7 @@
         var loop = l1 + l2 + TAU * (TT.plat + 1) * 0.55 + TAU * TT_POD.pul * 0.45;
         c.save();
         c.beginPath(); c.rect(0, 0, W, H); c.arc(C[0], C[1] + 7, TT.plat + 10, 0, TAU, true); c.clip();
-        c.lineCap = "round"; c.lineWidth = 2.2;
+        c.lineCap = "round"; c.lineWidth = 1.8;
         BELT_MARKS.forEach(function (m) {
           var sPos = (m[0] * loop + S.beltPos) % loop, run = null, t;
           // Run 0 goes pulley -> platter, run 1 platter -> pulley.
@@ -1231,7 +1232,7 @@
           if (!run) return;
           var ux = run[2] - run[0], uy = run[3] - run[1], ul = Math.sqrt(ux * ux + uy * uy) || 1;
           var x0 = run[0] + ux * t, y0 = run[1] + uy * t;
-          c.strokeStyle = m[2] ? "rgba(255,255,255,0.13)" : "rgba(0,0,0,0.45)";
+          c.strokeStyle = m[2] ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.3)";
           c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + (ux / ul) * m[1], y0 + (uy / ul) * m[1]); c.stroke();
         });
         c.lineCap = "butt"; c.restore();
