@@ -1179,8 +1179,10 @@
         c.save();
         c.beginPath(); c.rect(0, 0, W, H); c.arc(C[0], C[1] + 7, TT.plat + 10, 0, TAU, true); c.clip();
         c.beginPath(); c.moveTo(bp[0][0], bp[0][1]); c.lineTo(bp[0][2], bp[0][3]); c.moveTo(bp[1][2], bp[1][3]); c.lineTo(bp[1][0], bp[1][1]);
-        c.setLineDash([4, 42]); c.lineDashOffset = -S.beltPos;
-        c.strokeStyle = "rgba(255,255,255,0.1)"; c.lineWidth = 1; c.stroke();
+        // Visible but soft: at 0.1 alpha on the dark belt it vanished and the
+        // belt looked still (user, 2026-09-21).
+        c.setLineDash([7, 39]); c.lineDashOffset = -S.beltPos;
+        c.strokeStyle = "rgba(255,255,255,0.22)"; c.lineWidth = 1.6; c.stroke();
         c.setLineDash([]); c.lineDashOffset = 0;
         c.restore();
       }
@@ -1198,7 +1200,7 @@
       var dust = R._dust();
       c.beginPath();
       dust.specks.forEach(function (d) { var a = d[1] + S.platter; c.rect(C[0] + Math.cos(a) * d[0], C[1] + Math.sin(a) * d[0], d[2], d[2]); });
-      c.fillStyle = "rgba(225,225,220,0.22)"; c.fill();
+      c.fillStyle = "rgba(210,210,205,0.13)"; c.fill();
       c.beginPath();
       dust.scratches.forEach(function (d) { var a = d[1] + S.platter; c.moveTo(C[0] + Math.cos(a) * d[0], C[1] + Math.sin(a) * d[0]); c.arc(C[0], C[1], d[0], a, a + d[2]); });
       c.strokeStyle = "rgba(255,255,255,0.1)"; c.lineWidth = 0.8; c.stroke();
@@ -2595,7 +2597,7 @@
     for (var i = 0; i < this.trackKey.length; i++) h = (h * 31 + this.trackKey.charCodeAt(i)) >>> 0;
     var rnd = prng(h), sp = [], sc = [];
     // 18 faint specks, not 70 bright ones: "too many white specks" (user).
-    for (i = 0; i < 18; i++) sp.push([TT.lab + 10 + rnd() * (TT.rec - TT.lab - 16), rnd() * TAU, 0.5 + rnd() * 0.9]);
+    for (i = 0; i < 12; i++) sp.push([TT.lab + 10 + rnd() * (TT.rec - TT.lab - 16), rnd() * TAU, 0.5 + rnd() * 0.8]);
     for (i = 0; i < 6; i++) sc.push([TT.rOut + rnd() * (TT.rIn - TT.rOut), rnd() * TAU, 0.05 + rnd() * 0.25]);
     this.dustKey = this.trackKey;
     this.dust = { specks: sp, scratches: sc };
