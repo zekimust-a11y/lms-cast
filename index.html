@@ -645,6 +645,8 @@
         if (!data) return;
         if (data.type === 'NOW_PLAYING' || data.type === 'STATE') {
           applyNowPlaying(data.payload || {});
+        } else if (data.type === 'SPECTRUM_PART') {
+          acceptSpectrumPart(data.payload || {});
         } else if (data.type === 'DIAG_REQUEST') {
           sendDiag('request', true);
         } else if (data.type === 'PAUSE') {
@@ -791,6 +793,7 @@
             displayKey = '';
             displayLevelsKey = '';
             displaySpectrumKey = '';
+            fullSpectrumTrackId = '';
             displayLyricsKey = '';
           }
           hideDisplayStyle();
@@ -802,6 +805,7 @@
           displayRenderer = lib.create(displayCanvas, { view, variant: variant || undefined, maxFps: 30 });
           displayLevelsKey = '';
           displaySpectrumKey = '';
+          fullSpectrumTrackId = '';
           displayLyricsKey = '';
         } else if (key !== displayKey) {
           displayRenderer.setView(view, variant || undefined);
@@ -837,12 +841,35 @@
         // without setSpectrum simply ignore it).
         const sp = payload.spectrum;
         const spKey = sp && sp.data ? info.trackId + '|' + sp.bucketSeconds + '|' + sp.data.length : info.trackId + '|none';
-        if (spKey !== displaySpectrumKey && typeof displayRenderer.setSpectrum === 'function') {
+        if (fullSpectrumTrackId !== info.trackId && spKey !== displaySpectrumKey && typeof displayRenderer.setSpectrum === 'function') {
           displaySpectrumKey = spKey;
           displayRenderer.setSpectrum(sp && sp.data && lib.decodeSpectrum ? lib.decodeSpectrum(sp) : null);
         }
         displayViewEl.hidden = false;
         return true;
+      }
+
+      // Full-resolution spectrum, sent by the Core in parts once per track (the
+      // copy inside NOW_PLAYING is squeezed to 0.2-0.4 s frames and lagged).
+      // It belongs to the track on screen when it completes; the coarse copy
+      // is then ignored for that track.
+      let spectrumParts = null;
+      let fullSpectrumTrackId = '';
+      function acceptSpectrumPart(p) {
+        if (!p || typeof p.data !== 'string' || !(p.parts > 0)) return;
+        if (!spectrumParts || spectrumParts.key !== p.trackKey || spectrumParts.parts !== p.parts) {
+          spectrumParts = { key: p.trackKey, parts: p.parts, got: new Array(p.parts), meta: null, n: 0 };
+        }
+        if (p.meta) spectrumParts.meta = p.meta;
+        if (spectrumParts.got[p.part] == null) { spectrumParts.got[p.part] = p.data; spectrumParts.n++; }
+        if (spectrumParts.n < spectrumParts.parts || !spectrumParts.meta) return;
+        const lib = window.LyrDisplays;
+        const full = lib && lib.decodeSpectrum ? lib.decodeSpectrum(Object.assign({}, spectrumParts.meta, { data: spectrumParts.got.join('') })) : null;
+        spectrumParts = null;
+        if (!full || !displayRenderer || typeof displayRenderer.setSpectrum !== 'function') return;
+        displayRenderer.setSpectrum(full);
+        fullSpectrumTrackId = lastTrackId;
+        displaySpectrumKey = 'full|' + lastTrackId;
       }
 
       // Clock is a standby screen: keep it up, showing just the time, when the

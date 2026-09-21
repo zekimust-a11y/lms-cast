@@ -151,7 +151,10 @@
     if (!text || !(maxW > 0)) return text;
     var w = measure(c, text);
     if (w <= maxW) return text;
-    var s = Math.max(size * (minScale || 0.6), size * maxW / w);
+    // 3% margin: width is not exactly proportional to size (hinting and
+    // rounding), so an exact scale can overshoot by a pixel and fall through to
+    // the ellipsis. Chromecast cut "THE LOOK OF LOVE" to "THE LOOK OF LO…" so.
+    var s = Math.max(size * (minScale || 0.6), size * (maxW / w) * 0.97);
     font(c, weight, s, family);
     if (measure(c, text) <= maxW) return text;
     var lo = 0, hi = text.length;
@@ -584,7 +587,7 @@
       },
     },
   };
-  var CAS_VARIANTS = [["classic", "Classic"], ["silver", "Silver deck"], ["black", "Black three-head"], ["topload", "Top loader"], ["portable", "Portable"]];
+  var CAS_VARIANTS = [["classic", "Classic"], ["silver", "Silver deck"], ["black", "Black three-head"], ["portable", "Portable"]];
 
   IMPL.cassette = {
     bg: "#141517",
@@ -996,10 +999,21 @@
       disc(c, pd.x, pd.y, pd.r, "#1d1e21");
       circle(c, pd.x, pd.y, pd.r - 2); c.strokeStyle = "rgba(255,255,255,0.22)"; c.lineWidth = 2; c.stroke();
       rings(c, pd.x, pd.y, pd.r - 8, pd.pul + 4, 2, "rgba(255,255,255,0.05)", null);
-      c.strokeStyle = "rgba(190,192,198,0.6)"; c.lineWidth = 3; c.beginPath();
-      pts.forEach(function (p) { c.moveTo(p[0], p[1]); c.lineTo(p[2], p[3]); });
+      // A dark rubber belt with a faint sheen, its runs carried a little UNDER
+      // the platter (drawn next) so they vanish into its edge. It used to be a
+      // bright grey line ending exactly on the rim, which stood out (user).
+      var tuck = 18, runs = pts.map(function (p) {
+        var ux = p[2] - p[0], uy = p[3] - p[1], ul = Math.sqrt(ux * ux + uy * uy) || 1;
+        return [p[0], p[1], p[2] + (ux / ul) * tuck, p[3] + (uy / ul) * tuck];
+      });
+      c.lineCap = "round";
+      c.strokeStyle = "rgba(8,8,10,0.95)"; c.lineWidth = 3.4; c.beginPath();
+      runs.forEach(function (p) { c.moveTo(p[0], p[1]); c.lineTo(p[2], p[3]); });
       c.stroke();
       c.beginPath(); c.arc(pd.x, pd.y, pd.pul, phi + Math.PI - bq, phi + Math.PI + bq); c.stroke();
+      c.strokeStyle = "rgba(255,255,255,0.07)"; c.lineWidth = 1; c.beginPath();
+      runs.forEach(function (p) { c.moveTo(p[0], p[1] - 1); c.lineTo(p[2], p[3] - 1); });
+      c.stroke(); c.lineCap = "butt";
       disc(c, pd.x, pd.y, pd.pul - 1, "#c9ccd1"); disc(c, pd.x, pd.y, 5, "#2a2b2e");
       }
       if (wood) {
@@ -1158,12 +1172,17 @@
       // Belt: a sheen travelling at the platter rim's speed (modern only).
       if (v !== "wood" && typeof c.setLineDash === "function") {
         var bp = beltPts();
-        c.beginPath(); c.moveTo(bp[0][0], bp[0][1]); c.lineTo(bp[0][2], bp[0][3]); c.moveTo(bp[1][2], bp[1][3]); c.lineTo(bp[1][0], bp[1][1]);
         // Subtle on purpose: the first version read as a marching dashed line
         // (user, 2026-09-21). Short, faint glints are all a real belt shows.
+        // Clipped to OUTSIDE the platter (plus its side band), so a glint
+        // never crosses the platter's edge.
+        c.save();
+        c.beginPath(); c.rect(0, 0, W, H); c.arc(C[0], C[1] + 7, TT.plat + 10, 0, TAU, true); c.clip();
+        c.beginPath(); c.moveTo(bp[0][0], bp[0][1]); c.lineTo(bp[0][2], bp[0][3]); c.moveTo(bp[1][2], bp[1][3]); c.lineTo(bp[1][0], bp[1][1]);
         c.setLineDash([4, 42]); c.lineDashOffset = -S.beltPos;
-        c.strokeStyle = "rgba(255,255,255,0.14)"; c.lineWidth = 1.2; c.stroke();
+        c.strokeStyle = "rgba(255,255,255,0.1)"; c.lineWidth = 1; c.stroke();
         c.setLineDash([]); c.lineDashOffset = 0;
+        c.restore();
       }
       // Strobe ring: 108 dots. At 33⅓ they hold still (see _physics).
       c.beginPath();
@@ -1261,7 +1280,7 @@
       c.textAlign = "left"; c.textBaseline = "alphabetic";
       font(c, 500, 26, MONO); c.fillStyle = "#6f756f"; c.fillText("NOW PLAYING", 160, 170);
       c.fillStyle = "#f2a93b"; c.textAlign = "right"; c.fillText(T.fmt, 1440, 170); c.textAlign = "left";
-      c.fillStyle = "#f2efe8"; c.fillText(fit(c, 800, 150, DISPLAY, T.title.toUpperCase(), 1288, 0.5), 152, 318);
+      c.fillStyle = "#f2efe8"; c.fillText(fit(c, 800, 104, DISPLAY, T.title.toUpperCase(), 1288, 0.5), 156, 300);
       c.fillStyle = "#b9bdb6"; c.fillText(fit(c, 500, 44, SANS, join([T.artist, T.album], " — "), 1280, 0.7), 160, 382);
       for (var i = 0; i < 2; i++) {
         var y = 520 + i * 110;
@@ -1797,15 +1816,7 @@
         g.addColorStop(0, "rgba(90,110,200,0.18)"); g.addColorStop(1, "rgba(0,0,0,0)");
         c.fillStyle = g; c.fillRect(0, 0, W, H);
         c.fillStyle = "rgba(255,255,255,0.12)"; c.fillRect(SPX.x0, SPX.mid - 0.75, SPX.x1 - SPX.x0, 1.5);
-        // Album art, small, in the corner.
-        var art = R._artReady();
-        c.save(); rr(c, 60, 50, 110, 110, 10); c.clip();
-        var ok = false;
-        if (art) {
-          try { var iw = art.naturalWidth || art.width, ih = art.naturalHeight || art.height, s = Math.min(iw, ih); if (s > 0) { c.drawImage(art, (iw - s) / 2, (ih - s) / 2, s, s, 60, 50, 110, 110); ok = true; } } catch (e) { ok = false; }
-        }
-        if (!ok) { c.fillStyle = "#1c1e24"; c.fillRect(60, 50, 110, 110); }
-        c.restore();
+        // No album art here (user, 2026-09-21).
         specLabels(c, R._specHz(), R._specBands(), 718, "#7f86a0");
         specLine(c, T, false);
       },
@@ -1923,7 +1934,7 @@
       c.fillStyle = "rgba(255,255,255,0.6)";
       c.fillText(fit(c, 500, 24, SANS, join([T.title, T.artist], "  ·  "), 1200, 0.7), W / 2, 70);
       var L = R.lyr;
-      if (L.mode === "plain") { font(c, 500, 16, MONO); c.fillStyle = "rgba(255,255,255,0.4)"; c.textAlign = "right"; c.fillText("UNSYNCED", 1520, 70); }
+      if (L.mode === "plain") { font(c, 500, 16, MONO); c.fillStyle = "rgba(255,255,255,0.4)"; c.textAlign = "right"; c.fillText("NOT SYNCED", 1520, 70); }
       if (L.mode === "instrumental" || L.mode === "none") {
         c.textAlign = "center";
         if (L.mode === "instrumental") { c.fillStyle = "#fff"; c.fillText(fit(c, 300, 110, SANS, "Instrumental", 1300, 0.6), W / 2, 480); }
@@ -1959,14 +1970,34 @@
           font(c, 400, 72, SANS); c.fillStyle = "rgba(255,255,255," + pulse.toFixed(3) + ")"; c.fillText("♪", W / 2, cy);
         }
       } else if (L.mode === "plain") {
-        var pl = L.lines, pos = S.progress * Math.max(0, pl.length - 1);
-        for (var j2 = Math.floor(pos) - 4; j2 <= Math.floor(pos) + 5; j2++) {
-          if (j2 < 0 || j2 >= pl.length || !pl[j2]) continue;
-          var y2 = cy + (j2 - pos) * 70;
-          if (y2 < 110 || y2 > 800) continue;
-          var w2 = lyrWrap(R, c, pl[j2], 40, 500, 1300);
-          font(c, 500, w2.s, SANS); c.fillStyle = "rgba(255,255,255," + Math.max(0.1, 0.55 - Math.abs(j2 - pos) * 0.09).toFixed(3) + ")";
-          c.fillText(w2.lines.join(" "), W / 2, y2);
+        // Unsynced lyrics are shown as PAGES, not a scroll: a scroll pretends
+        // to follow the song and never does (user, 2026-09-21). Pages break at
+        // stanza gaps where possible, 11 lines at most, and turn in step with
+        // the track's progress, with a short cross-fade.
+        if (!L.pages) {
+          var pages = [], cur = [];
+          L.lines.forEach(function (ln) {
+            if (!ln) { if (cur.length >= 6) { pages.push(cur); cur = []; } else if (cur.length) cur.push(""); return; }
+            if (cur.length >= 11) { pages.push(cur); cur = []; }
+            cur.push(ln);
+          });
+          if (cur.length) pages.push(cur);
+          L.pages = pages.map(function (pg) { while (pg.length && !pg[pg.length - 1]) pg.pop(); return pg; }).filter(function (pg) { return pg.length; });
+        }
+        var np = L.pages.length;
+        if (np) {
+          var fp = clamp(S.progress, 0, 0.9999) * np, pi = Math.floor(fp), within = (fp - pi) * (S.dur > 0 ? S.dur / np : 30);
+          var fade = clamp(within / 0.6, 0, 1), pg = L.pages[pi], lh = 58, top = cy - ((pg.length - 1) * lh) / 2;
+          pg.forEach(function (ln, k) {
+            if (!ln) return;
+            var w3 = lyrWrap(R, c, ln, 38, 500, 1300);
+            font(c, 500, w3.s, SANS); c.fillStyle = "rgba(255,255,255," + (0.82 * fade).toFixed(3) + ")";
+            c.fillText(w3.lines.join(" "), W / 2, top + k * lh);
+          });
+          if (np > 1) {
+            font(c, 500, 18, MONO); c.fillStyle = "rgba(255,255,255,0.35)";
+            c.fillText((pi + 1) + " / " + np, W / 2, 820);
+          }
         }
       }
       c.textBaseline = "alphabetic";
@@ -2153,7 +2184,7 @@
       lamp: [false, false], lampT: [1, 1], reelL: 0, reelR: 0, rrL: 0, rrR: 0, platter: 0, platterW: 0, strobe: 0, armR: null, tip: [0, 0], lift: 0, retFrom: null, beltPos: 0, ttT: 0,
     };
     this.grads = {}; this.layer = null; this.layerKey = ""; this.label = null; this.labelKey = "";
-    this.fontGen = 0; this.art = null; this.artUrl = ""; this.artImg = null;
+    this.fontGen = 0; this.art = null; this.artUrl = ""; this.artImg = null; this.artWant = null; this.artClearTimer = 0;
     this.raf = 0; this.timer = 0; this.lastT = 0; this.lastFrame = 0; this.dead = false; this.needSize = true;
     this.box = { bw: 0, bh: 0, lw: 0, lh: 0, ox: 0, oy: 0 };
     this.lyr = { mode: "none", lines: [] }; this.lyrCache = {}; this.clockFmt = "auto"; this.idleT0 = now();
@@ -2183,7 +2214,17 @@
     this.T = trackInfo(t);
     this.trackKey = JSON.stringify(this.T);
     var url = str(t && t.artworkUrl);
-    if (url !== this.artUrl) this._loadArt(url);
+    // Compare with what was last ASKED for, not what is showing: the shown
+    // address only changes once a load completes.
+    if (url !== this.artWant) {
+      this.artWant = url;
+      if (url && url === this.artUrl && this.art) {
+        if (this.artImg) { this.artImg.onload = this.artImg.onerror = null; this.artImg = null; }
+        if (this.artClearTimer) { root.clearTimeout(this.artClearTimer); this.artClearTimer = 0; }
+      } else {
+        this._loadArt(url);
+      }
+    }
     this._wake();
   };
   // Per-track VU calibration. A fixed studio alignment (0 VU = -14 dBFS)
@@ -2260,7 +2301,8 @@
     this.dead = true;
     if (this.raf && typeof root.cancelAnimationFrame === "function") root.cancelAnimationFrame(this.raf);
     if (this.timer) root.clearTimeout(this.timer);
-    this.raf = 0; this.timer = 0;
+    if (this.artClearTimer) root.clearTimeout(this.artClearTimer);
+    this.raf = 0; this.timer = 0; this.artClearTimer = 0;
     if (this.ro) this.ro.disconnect();
     else if (typeof root.removeEventListener === "function") root.removeEventListener("resize", this._onResize);
     var doc = root.document;
@@ -2270,18 +2312,31 @@
     this.layer = this.label = this.arm = this.art = this.artImg = null; this.grads = {};
   };
 
+  // The cover on screen stays until its replacement has LOADED. Hosts get
+  // staged updates around a track change (no art, then an embedded copy, then
+  // the web copy), and clearing on every new address made the turntable label
+  // blank and reload several times (user, 2026-09-21). An empty address only
+  // clears the art if it is still empty 1.5 s later, i.e. the track has none.
   P._loadArt = function (url) {
     var self = this;
+    if (this.artClearTimer) { root.clearTimeout(this.artClearTimer); this.artClearTimer = 0; }
     if (this.artImg) this.artImg.onload = this.artImg.onerror = null;
-    this.artUrl = url; this.art = null; this.artImg = null;
-    if (!url || typeof root.Image !== "function") return;
+    this.artImg = null;
+    if (!url || typeof root.Image !== "function") {
+      this.artClearTimer = root.setTimeout(function () {
+        self.artClearTimer = 0;
+        if (!self.artImg) { self.art = null; self.artUrl = ""; self._wake(); }
+      }, 1500);
+      return;
+    }
     var img = new root.Image(); // no crossOrigin: pixels are never read back
     img.onload = function () {
       if (self.artImg !== img) return;
-      if ((img.naturalWidth || img.width) > 0) self.art = img;
+      self.artImg = null;
+      if ((img.naturalWidth || img.width) > 0) { self.art = img; self.artUrl = url; }
       self._wake();
     };
-    img.onerror = function () { if (self.artImg === img) { self.art = null; self._wake(); } };
+    img.onerror = function () { if (self.artImg === img) { self.artImg = null; self._wake(); } };
     this.artImg = img;
     img.src = url;
   };
@@ -2412,7 +2467,9 @@
     var SP = this.spec, nb = S.sp.length, spPlay = S.playing && !!SP, fr = 0, fi = 0, nfr = 0;
     if (spPlay) {
       nfr = Math.floor(SP.db.length / SP.bands);
-      var xs = S.pos / SP.bucketSeconds - 0.5;
+      // 60 ms ahead: the bars' attack and the frame they land in put the
+      // display a little behind the sound, which read as lagging (user).
+      var xs = (S.pos + 0.06) / SP.bucketSeconds - 0.5;
       if (xs > nfr) spPlay = false;
       xs = clamp(xs, 0, Math.max(0, nfr - 1.001)); fi = Math.floor(xs); fr = xs - fi;
     }
