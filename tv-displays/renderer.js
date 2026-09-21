@@ -1994,13 +1994,13 @@
       c.fillText(fit(c, 500, 24, SANS, join([T.title, T.artist], "  ·  "), 1200, 0.7), W / 2, 70);
       var L = R.lyr;
       if (L.mode === "plain") { font(c, 500, 16, MONO); c.fillStyle = "rgba(255,255,255,0.4)"; c.textAlign = "right"; c.fillText("NOT SYNCED", 1520, 70); }
-      if (L.mode === "instrumental" || L.mode === "none") {
+      if (L.mode === "instrumental" || L.mode === "none" || L.mode === "wait") {
         c.textAlign = "center";
         if (L.mode === "instrumental") { c.fillStyle = "#fff"; c.fillText(fit(c, 300, 110, SANS, "Instrumental", 1300, 0.6), W / 2, 480); }
         else {
           c.fillStyle = "#fff"; c.fillText(fit(c, 600, 64, SANS, T.title || "Nothing playing", 1300, 0.6), W / 2, 420);
           c.fillStyle = "rgba(255,255,255,0.65)"; c.fillText(fit(c, 400, 34, SANS, T.artist, 1300, 0.7), W / 2, 478);
-          c.fillStyle = "rgba(255,255,255,0.4)"; c.fillText(fit(c, 500, 22, MONO, "NO LYRICS", 600, 0.7), W / 2, 560);
+          if (L.mode === "none") { c.fillStyle = "rgba(255,255,255,0.4)"; c.fillText(fit(c, 500, 22, MONO, "NO LYRICS", 600, 0.7), W / 2, 560); }
         }
       }
       c.textAlign = "left";
@@ -2193,8 +2193,11 @@
         c.textAlign = "left"; c.fillStyle = "#ecebe7";
         c.fillText(p.hs, x1, 520); c.fillText(p.ms2, x1 + wh + wc, 520);
         c.fillStyle = "rgba(236,235,231," + colon.toFixed(3) + ")"; c.fillText(":", x1 + wh, 505);
+        // Seconds on the baseline, AM/PM stacked above them: side by side they
+        // read as one word, "6:16 15 PM" (seen on the TV, 2026-09-21).
         font(c, 300, 44, SANS); c.fillStyle = "rgba(236,235,231,0.45)";
-        c.fillText((p.s < 10 ? "0" : "") + p.s + (p.ap ? " " + p.ap : ""), x1 + wh + wc + wm + 18, 520);
+        c.fillText((p.s < 10 ? "0" : "") + p.s, x1 + wh + wc + wm + 18, 520);
+        if (p.ap) { font(c, 500, 30, SANS); c.fillStyle = "rgba(236,235,231,0.6)"; c.fillText(p.ap, x1 + wh + wc + wm + 18, 440); }
       }
       if (S.playing && T.title) {
         c.fillStyle = "rgba(236,235,231,0.6)"; c.fillRect(500, 824, 600 * S.progress, 2);
@@ -2317,8 +2320,11 @@
     this._wake();
   };
   // Lyrics as the Core's /api/lyrics returns them: { synced, plain, instrumental }.
+  // null = not known yet (the lookup is still out): title and artist only.
+  // An object with nothing in it = looked, found none: "No lyrics". Showing
+  // "No lyrics" while the lookup was still running was wrong (TV, 2026-09-21).
   P.setLyrics = function (l) {
-    var L = { mode: "none", lines: [] };
+    var L = { mode: l ? "none" : "wait", lines: [] };
     if (l) {
       var ls = l.synced ? parseLrc(l.synced) : [];
       if (ls.some(function (x) { return x.text; })) L = { mode: "synced", lines: ls };
