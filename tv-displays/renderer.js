@@ -683,7 +683,7 @@
 
   // ---------------------------------------------------------------------------
   // Turntable: a high-end deck on a graphite plinth. Everything that is round
-  // and centred (platter rim, turning marks, grooves, sheen, strobe dots) looks
+  // and centred (platter rim, turning marks, grooves, sheen) looks
   // the same at any rotation, so it lives in the cached layer; per frame only
   // the label, the clamp, the arm and the time are drawn.
   //
@@ -786,11 +786,20 @@
   var STEEL = [[0, "#2a2c30"], [0.25, "#aeb3ba"], [0.38, "#f4f6f8"], [0.55, "#8d9299"], [1, "#1c1d20"]];
   var ALLOY = [[0, "#55595f"], [0.22, "#c9ccd1"], [0.34, "#ffffff"], [0.5, "#b7bbc1"], [0.85, "#6d7178"], [1, "#3e4146"]];
   var BLACK = [[0, "#0b0b0c"], [0.3, "#4a4c51"], [0.42, "#6c6f75"], [0.6, "#232427"], [1, "#08080a"]];
+  // The tube's axis angle in the arm's frame (pivot->stylus is 0). The rear
+  // stub and counterweight lie on it: counterweight centre at -109 along it.
+  function armTubeAngle() {
+    var ca = Math.cos(ARM.off), sa = Math.sin(ARM.off), nx = TT.L - ca * 96, ny = -sa * 96;
+    return Math.atan2(ny, nx);
+  }
   function drawArm(c, flat, style) {
     var L = TT.L, ca = Math.cos(ARM.off), sa = Math.sin(ARM.off);
-    var HS = 1.5, nx = L - ca * 64 * HS, ny = -sa * 64 * HS, tl = Math.sqrt(nx * nx + ny * ny), ta = Math.atan2(ny, nx);
+    var HS = 1.5, nx = L - ca * 64 * HS, ny = -sa * 64 * HS, tl = Math.sqrt(nx * nx + ny * ny), ta = armTubeAngle();
     var F = function (fn) { if (flat) { c.fillStyle = "#000"; fn(true); } else fn(false); };
-    // Rear stub, decoupling ring and stepped counterweight.
+    // Rear stub, decoupling ring and stepped counterweight, on the tube's own
+    // axis through the pivot (they were on the pivot-stylus line, which the
+    // headshell offset tilts away from the tube: user saw a kinked arm).
+    c.save(); c.rotate(ta);
     F(function (f) {
       if (f) { c.fillRect(-176, -4.5, 160, 9); rr(c, -150, -28, 90, 56, 6); c.fill(); return; }
       cyl(c, -176, -18, 4.5, STEEL);
@@ -806,11 +815,17 @@
       c.strokeStyle = "rgba(0,0,0,0.55)"; c.lineWidth = 1.2; c.stroke();
       c.fillStyle = "rgba(255,255,255,0.18)"; c.fillRect(-150, -2, 0.8, 4);
     });
+    c.restore();
     // Tapered tube with its collars, in the tube's own frame. The wood deck
     // has an S-shaped tube ending in a detachable headshell's collar.
     c.save(); c.rotate(ta);
     if (style === "wood") F(function (f) {
-      var sCurve = function () { c.beginPath(); c.moveTo(20, 0); c.bezierCurveTo(tl * 0.3, 42, tl * 0.6, -38, tl - 14, 0); };
+      // A straight rear section on the axis (collinear with the stub), then the S.
+      var sCurve = function () {
+        c.beginPath(); c.moveTo(20, 0); c.lineTo(tl * 0.22, 0);
+        c.bezierCurveTo(tl * 0.36, 0, tl * 0.42, 40, tl * 0.58, 30);
+        c.bezierCurveTo(tl * 0.74, 20, tl * 0.8, -22, tl - 14, 0);
+      };
       c.lineCap = "round";
       sCurve(); c.strokeStyle = f ? "#000" : "#50545b"; c.lineWidth = 13; c.stroke();
       if (!f) {
@@ -918,11 +933,42 @@
       return [pd.x + nx * pd.pul, pd.y + ny * pd.pul, TT.cx + nx * (TT.plat + 1), TT.cy + ny * (TT.plat + 1)];
     });
   }
+  // A START/STOP button at the deck's bottom-right: a rubber-edged DJ-deck
+  // button (modern) or a chrome-bezel ivory push button (wood).
+  function startStop(c, wood, on) {
+    var x = 940, y = 704, w = 118, h = 78, d = on ? 2.5 : 0;
+    font(c, 600, 12, SANS); c.textAlign = "center"; c.textBaseline = "alphabetic";
+    if (wood) {
+      var cx = x + w / 2, cy = y + 34;
+      c.save(); c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 10 * SHADOW_SCALE; c.shadowOffsetY = 5 * SHADOW_SCALE;
+      metal(c, cx, cy, 30, "#ffffff", "#6d7178"); c.restore();
+      disc(c, cx, cy, 22, "#3a3025");
+      c.save(); c.shadowColor = "rgba(0,0,0,0.5)"; c.shadowBlur = (on ? 2 : 7) * SHADOW_SCALE; c.shadowOffsetY = (on ? 1 : 3) * SHADOW_SCALE;
+      metal(c, cx, cy + d * 0.4, 20 - d * 0.4, on ? "#efe6d0" : "#fbf4e2", on ? "#b9ab8c" : "#cdbf9f"); c.restore();
+      c.fillStyle = "rgba(255,230,200,0.6)"; c.fillText("START · STOP", cx, y + 90);
+    } else {
+      c.save(); c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 10 * SHADOW_SCALE; c.shadowOffsetY = 4 * SHADOW_SCALE;
+      rr(c, x, y, w, h, 12); c.fillStyle = "#0b0b0c"; c.fill(); c.restore();
+      rr(c, x, y, w, h, 12); c.strokeStyle = "rgba(255,255,255,0.1)"; c.lineWidth = 1; c.stroke();
+      c.save(); c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = (on ? 2 : 8) * SHADOW_SCALE; c.shadowOffsetY = (on ? 1 : 4) * SHADOW_SCALE;
+      rr(c, x + 8, y + 7 + d, w - 16, h - 16, 8);
+      var g = c.createLinearGradient(0, y + 7, 0, y + h - 9);
+      g.addColorStop(0, on ? "#2c2e32" : "#3d4045"); g.addColorStop(1, on ? "#17181b" : "#1d1f22");
+      c.fillStyle = g; c.fill(); c.restore();
+      c.fillStyle = "rgba(0,0,0,0.5)"; c.fillText("START · STOP", x + w / 2, y + h / 2 + 5 + d);
+      c.fillStyle = "rgba(255,255,255,0.45)"; c.fillText("START · STOP", x + w / 2, y + h / 2 + 4 + d);
+    }
+    c.textAlign = "left";
+  }
   var TT_VARIANTS = [["modern", "Modern"], ["wood", "Wood classic"]];
+  // Belt scuffs: [position round the loop 0..1, length, lighter?].
+  var BELT_MARKS = [[0.03, 4, 1], [0.11, 8, 0], [0.19, 3, 1], [0.34, 10, 0], [0.41, 5, 1], [0.58, 6, 0], [0.66, 9, 1], [0.79, 4, 0], [0.88, 7, 1]];
 
   IMPL.turntable = {
     bg: "#0a0a0b",
     bgFor: function (v) { return v === "wood" ? "#0c0806" : "#0a0a0b"; },
+    // The START/STOP button looks pressed while playing.
+    keyExtra: function (R) { return R.S.playing ? "on" : "off"; },
     stat: function (c, T, v, R) {
       var C = [TT.cx, TT.cy], i, wood = v === "wood";
       c.fillStyle = wood ? "#0c0806" : "#0a0a0b"; c.fillRect(0, 0, W, H);
@@ -1154,42 +1200,55 @@
       disc(c, 214, 778, 4, "#2a2b2e");
       c.textBaseline = "alphabetic";
       }
-      // Type block.
-      var x = 1160, y = 380;
-      font(c, 500, 15, MONO); c.fillStyle = "#77756f"; c.fillText("33⅓ RPM", x, y);
-      font(c, 600, 46, SANS); c.fillStyle = "#f2f0ea";
-      var lines = wrapLines(c, T.title, 380, 2);
-      lines.forEach(function (l, k) { c.fillText(l, x, y + 58 + k * 52); });
-      y += 58 + Math.max(1, lines.length) * 52 - 8;
-      c.fillStyle = "#c4c1ba"; c.fillText(fit(c, 400, 28, SANS, T.artist, 380, 0.7), x, y + 4);
-      c.fillStyle = "#8d8a84"; c.fillText(fit(c, 400, 22, SANS, join([T.album, T.year], " · "), 380, 0.7), x, y + 40);
-      c.fillStyle = "#4a4845"; c.fillRect(x, y + 68, 56, 1.5);
-      c.fillStyle = "#a19e97"; c.fillText(fit(c, 500, 18, MONO, T.fmt, 380, 0.7), x, y + 104);
-      R.ttTimeY = y + 136;
+      startStop(c, wood, R.S.playing);
+      // Type block: title, artist and album, nothing else (user).
+      var x = 1160;
+      font(c, 600, 46, SANS);
+      var lines = wrapLines(c, T.title, 380, 2), y = 450 - (lines.length * 52 + 80) / 2 + 40;
+      c.fillStyle = wood ? "#f4ece0" : "#f2f0ea";
+      lines.forEach(function (l, k) { c.fillText(l, x, y + k * 52); });
+      y += (lines.length - 1) * 52;
+      c.fillStyle = wood ? "#d2c2aa" : "#c4c1ba"; c.fillText(fit(c, 400, 28, SANS, T.artist, 380, 0.7), x, y + 46);
+      c.fillStyle = wood ? "#9d8d78" : "#8d8a84"; c.fillText(fit(c, 400, 22, SANS, T.album, 380, 0.7), x, y + 82);
     },
     dyn: function (c, S, T, v, R) {
       var C = [TT.cx, TT.cy], lr = TT.lab, wob = Math.sin(S.platter);
-      // Belt: a sheen travelling at the platter rim's speed (modern only).
-      if (v !== "wood" && typeof c.setLineDash === "function") {
-        var bp = beltPts();
-        // Subtle on purpose: the first version read as a marching dashed line
-        // (user, 2026-09-21). Short, faint glints are all a real belt shows.
-        // Clipped to OUTSIDE the platter (plus its side band), so a glint
-        // never crosses the platter's edge.
+      // Belt (modern only): a few small scuffs, lighter and darker, carried
+      // along the runs at the rim's speed; just visible, clipped off the platter.
+      if (v !== "wood") {
+        var bp = beltPts(), l1 = Math.hypot(bp[0][2] - bp[0][0], bp[0][3] - bp[0][1]), l2 = Math.hypot(bp[1][2] - bp[1][0], bp[1][3] - bp[1][1]);
+        var loop = l1 + l2 + TAU * (TT.plat + 1) * 0.55 + TAU * TT_POD.pul * 0.45;
         c.save();
         c.beginPath(); c.rect(0, 0, W, H); c.arc(C[0], C[1] + 7, TT.plat + 10, 0, TAU, true); c.clip();
-        c.beginPath(); c.moveTo(bp[0][0], bp[0][1]); c.lineTo(bp[0][2], bp[0][3]); c.moveTo(bp[1][2], bp[1][3]); c.lineTo(bp[1][0], bp[1][1]);
-        // Visible but soft: at 0.1 alpha on the dark belt it vanished and the
-        // belt looked still (user, 2026-09-21).
-        c.setLineDash([7, 39]); c.lineDashOffset = -S.beltPos;
-        c.strokeStyle = "rgba(255,255,255,0.22)"; c.lineWidth = 1.6; c.stroke();
-        c.setLineDash([]); c.lineDashOffset = 0;
-        c.restore();
+        c.lineCap = "round"; c.lineWidth = 2.2;
+        BELT_MARKS.forEach(function (m) {
+          var sPos = (m[0] * loop + S.beltPos) % loop, run = null, t;
+          // Run 0 goes pulley -> platter, run 1 platter -> pulley.
+          if (sPos < l1) { run = bp[0]; t = sPos / l1; }
+          else if (sPos - l1 - TAU * (TT.plat + 1) * 0.55 >= 0 && sPos - l1 - TAU * (TT.plat + 1) * 0.55 < l2) {
+            var q = bp[1]; t = (sPos - l1 - TAU * (TT.plat + 1) * 0.55) / l2; run = [q[2], q[3], q[0], q[1]];
+          }
+          if (!run) return;
+          var ux = run[2] - run[0], uy = run[3] - run[1], ul = Math.sqrt(ux * ux + uy * uy) || 1;
+          var x0 = run[0] + ux * t, y0 = run[1] + uy * t;
+          c.strokeStyle = m[2] ? "rgba(255,255,255,0.13)" : "rgba(0,0,0,0.45)";
+          c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + (ux / ul) * m[1], y0 + (uy / ul) * m[1]); c.stroke();
+        });
+        c.lineCap = "butt"; c.restore();
       }
-      // Strobe ring: 108 dots. At 33⅓ they hold still (see _physics).
+      // Rim dots turn with the platter at its real speed (a strobe that held
+      // still read as a dead platter: user). A brighter machining mark and a
+      // small plain badge make the rotation legible; the specular highlight
+      // in the static layer stays put.
+      var pr = S.platter;
+      c.beginPath(); c.arc(C[0], C[1], 340, pr + 0.4, pr + 0.72); c.arc(C[0], C[1], 344, pr + 0.72, pr + 0.4, true); c.closePath();
+      c.fillStyle = v === "wood" ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.3)"; c.fill();
+      c.save(); c.translate(C[0] + Math.cos(pr + 3.6) * 339.5, C[1] + Math.sin(pr + 3.6) * 339.5); c.rotate(pr + 3.6 + Math.PI / 2);
+      rr(c, -13, -4, 26, 8, 3); c.fillStyle = v === "wood" ? "#2a2217" : "#1c1e22"; c.fill();
+      c.strokeStyle = "rgba(255,255,255,0.35)"; c.lineWidth = 0.8; c.stroke(); c.restore();
       c.beginPath();
       for (var i = 0; i < STROBE_N; i++) {
-        var sa = S.strobe + i * STROBE_PITCH, co = Math.cos(sa), si = Math.sin(sa);
+        var sa = pr + i * STROBE_PITCH, co = Math.cos(sa), si = Math.sin(sa);
         c.moveTo(C[0] + co * 336 - si * 1.6, C[1] + si * 336 + co * 1.6);
         c.lineTo(C[0] + co * 343 - si * 1.6, C[1] + si * 343 + co * 1.6);
         c.lineTo(C[0] + co * 343 + si * 1.6, C[1] + si * 343 - co * 1.6);
@@ -1247,8 +1306,6 @@
       c.save(); c.translate(TT.px, TT.py); c.rotate(ang);
       if (sp) c.drawImage(sp[0], ARM.x0, ARM.y0, ARM.w, ARM.h); else drawArm(c, false, v);
       c.restore();
-      font(c, 500, 18, MONO); c.fillStyle = v === "wood" ? "#b8a58a" : "#a19e97"; c.textAlign = "left";
-      c.fillText(timeText(S), 1160, R.ttTimeY || 640);
     },
   };
 
@@ -2183,7 +2240,7 @@
       vu: [{ x: -0.02, v: 0 }, { x: -0.02, v: 0 }],
       ppm: [{ lvl: -60, hold: -60, holdT: 0 }, { lvl: -60, hold: -60, holdT: 0 }],
       lyScroll: null, sp: new Float32Array(16), spPk: new Float32Array(16), spT: new Float32Array(16),
-      lamp: [false, false], lampT: [1, 1], reelL: 0, reelR: 0, rrL: 0, rrR: 0, platter: 0, platterW: 0, strobe: 0, armR: null, tip: [0, 0], lift: 0, retFrom: null, beltPos: 0, ttT: 0,
+      lamp: [false, false], lampT: [1, 1], reelL: 0, reelR: 0, rrL: 0, rrR: 0, platter: 0, platterW: 0, armR: null, tip: [0, 0], lift: 0, retFrom: null, beltPos: 0, ttT: 0,
     };
     this.grads = {}; this.layer = null; this.layerKey = ""; this.label = null; this.labelKey = "";
     this.fontGen = 0; this.art = null; this.artUrl = ""; this.artImg = null; this.artWant = null; this.artClearTimer = 0;
@@ -2453,9 +2510,6 @@
     var acc = (PLATTER / 0.8) * dt;
     S.platterW += clamp((S.playing ? PLATTER : 0) - S.platterW, -acc, acc);
     S.platter = (S.platter + S.platterW * dt) % TAU;
-    // A strobe lit at the frame rate sees the dots hold still at exact speed.
-    S.strobe = (S.strobe + S.platterW * dt) % TAU;
-    if (S.platterW === PLATTER) S.strobe = Math.round(S.strobe / STROBE_PITCH) * STROBE_PITCH;
     if (S.platterW !== 0) settled = false;
     // Lyrics: ease the scroll to the current line (~350 ms); seeks jump.
     if (this.lyr.mode === "synced") {
@@ -2487,7 +2541,7 @@
       if (S.sp[bI] > 0 || S.spPk[bI] > 0) settled = false;
     }
     // Belt sheen runs at the platter rim's speed; the "play clock" drives jitter.
-    S.beltPos = ((S.beltPos || 0) + S.platterW * (TT.plat + 1) * dt) % 46;
+    S.beltPos = ((S.beltPos || 0) + S.platterW * (TT.plat + 1) * dt) % 1e6;
     S.ttT = (S.ttT || 0) + dt * (S.platterW / PLATTER);
     // Tonearm. On the groove for the position; parked when nothing is loaded.
     // Near the end of a playing track it lifts, swings back to the lead-in and
@@ -2518,6 +2572,10 @@
     var down = 1 - S.lift, wob = 0.95 * Math.sin(S.platter + 1.3) * down;
     var jit = S.platterW > 0 ? (0.16 * Math.sin(S.ttT * 23.7) + 0.09 * Math.sin(S.ttT * 41.3 + 1)) * down : 0;
     S.tip = armTip(S.armR + wob + jit);
+    // For the tests: the counterweight centre and a point on the tube's rear axis.
+    var aw = Math.atan2(S.tip[1] - TT.py, S.tip[0] - TT.px) + armTubeAngle();
+    S.cw = [TT.px - Math.cos(aw) * 109, TT.py - Math.sin(aw) * 109];
+    S.tubeRear = [TT.px + Math.cos(aw) * 60, TT.py + Math.sin(aw) * 60];
     return settled;
   };
 
