@@ -126,8 +126,27 @@
   // Set the font and return `text` shrunk (down to minScale) and then
   // ellipsised so it fits maxW. The fallback fonts are wider than the condensed
   // display face, so every free-length string goes through here.
+  // Is the condensed display face really there? Chromecast has none of the
+  // web fonts, and its platform sans is far wider, so titles set in DISPLAY
+  // may shrink further there before they are ellipsised. Measured, not
+  // document.fonts.check(), which answers true for fonts it has never heard of.
+  var FONT_GEN = 0, displayGen = -1, displayOk = true;
+  function displayFace() {
+    if (displayGen === FONT_GEN) return displayOk;
+    displayGen = FONT_GEN; displayOk = true;
+    try {
+      var cv = makeCanvas(4, 4), x = cv && cv.getContext("2d");
+      if (x) {
+        x.font = "800 64px monospace"; var a = x.measureText("HAMBURGEFONTIV").width;
+        x.font = '800 64px "Big Shoulders Display", monospace'; var b = x.measureText("HAMBURGEFONTIV").width;
+        displayOk = Math.abs(a - b) > 0.5;
+      }
+    } catch (e) { displayOk = true; }
+    return displayOk;
+  }
   function fit(c, weight, size, family, text, maxW, minScale) {
     text = str(text);
+    if (family === DISPLAY && !displayFace()) minScale = (minScale || 0.6) * 0.75;
     font(c, weight, size, family);
     if (!text || !(maxW > 0)) return text;
     var w = measure(c, text);
@@ -764,7 +783,7 @@
   var STEEL = [[0, "#2a2c30"], [0.25, "#aeb3ba"], [0.38, "#f4f6f8"], [0.55, "#8d9299"], [1, "#1c1d20"]];
   var ALLOY = [[0, "#55595f"], [0.22, "#c9ccd1"], [0.34, "#ffffff"], [0.5, "#b7bbc1"], [0.85, "#6d7178"], [1, "#3e4146"]];
   var BLACK = [[0, "#0b0b0c"], [0.3, "#4a4c51"], [0.42, "#6c6f75"], [0.6, "#232427"], [1, "#08080a"]];
-  function drawArm(c, flat) {
+  function drawArm(c, flat, style) {
     var L = TT.L, ca = Math.cos(ARM.off), sa = Math.sin(ARM.off);
     var HS = 1.5, nx = L - ca * 64 * HS, ny = -sa * 64 * HS, tl = Math.sqrt(nx * nx + ny * ny), ta = Math.atan2(ny, nx);
     var F = function (fn) { if (flat) { c.fillStyle = "#000"; fn(true); } else fn(false); };
@@ -784,9 +803,23 @@
       c.strokeStyle = "rgba(0,0,0,0.55)"; c.lineWidth = 1.2; c.stroke();
       c.fillStyle = "rgba(255,255,255,0.18)"; c.fillRect(-150, -2, 0.8, 4);
     });
-    // Tapered tube with its collars, in the tube's own frame.
+    // Tapered tube with its collars, in the tube's own frame. The wood deck
+    // has an S-shaped tube ending in a detachable headshell's collar.
     c.save(); c.rotate(ta);
-    F(function (f) {
+    if (style === "wood") F(function (f) {
+      var sCurve = function () { c.beginPath(); c.moveTo(20, 0); c.bezierCurveTo(tl * 0.3, 42, tl * 0.6, -38, tl - 14, 0); };
+      c.lineCap = "round";
+      sCurve(); c.strokeStyle = f ? "#000" : "#50545b"; c.lineWidth = 13; c.stroke();
+      if (!f) {
+        sCurve(); c.strokeStyle = "#c9ccd2"; c.lineWidth = 9.5; c.stroke();
+        c.save(); c.translate(0, -2.4); sCurve(); c.strokeStyle = "rgba(255,255,255,0.92)"; c.lineWidth = 2.2; c.stroke(); c.restore();
+      }
+      c.lineCap = "butt";
+      if (f) { c.fillRect(tl - 18, -8, 22, 16); return; }
+      cyl(c, 18, 40, 9.5, STEEL);
+      c.save(); c.translate(tl - 8, 0); cyl(c, -12, -2, 8, BLACK); cyl(c, -2, 8, 7, STEEL); c.fillStyle = "rgba(0,0,0,0.4)"; c.fillRect(-2.5, -7, 1, 14); c.restore();
+    });
+    else F(function (f) {
       c.beginPath(); c.moveTo(20, -7.5); c.lineTo(tl, -4.5); c.lineTo(tl, 4.5); c.lineTo(20, 7.5); c.closePath();
       if (f) { c.fill(); return; }
       var g = c.createLinearGradient(0, -7.5, 0, 7.5);
@@ -865,14 +898,80 @@
     c.restore();
   }
 
+  // Polished metal: an anisotropic conic sweep, or a diagonal linear sweep
+  // where conic gradients are missing (Chromecast's Chrome 92).
+  function metalSweep(c, cx, cy, r) {
+    var stops = [[0, "#8d9197"], [0.1, "#eef0f2"], [0.22, "#8a8e94"], [0.5, "#6f7379"], [0.6, "#d6d9dd"], [0.72, "#7c8086"], [1, "#8d9197"]];
+    var g = typeof c.createConicGradient === "function" ? c.createConicGradient(-2.2, cx, cy) : c.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+    stops.forEach(function (s) { g.addColorStop(s[0], s[1]); });
+    return g;
+  }
+  // The belt's two straight runs, pulley to platter: [[px, py, qx, qy] x2].
+  function beltPts() {
+    var pd = TT_POD, dx = TT.cx - pd.x, dy = TT.cy - pd.y, Ld = Math.sqrt(dx * dx + dy * dy), phi = Math.atan2(dy, dx);
+    var bq = Math.acos((TT.plat + 1 - pd.pul) / Ld);
+    return [1, -1].map(function (sg) {
+      var b = phi + Math.PI + sg * bq, nx = Math.cos(b), ny = Math.sin(b);
+      return [pd.x + nx * pd.pul, pd.y + ny * pd.pul, TT.cx + nx * (TT.plat + 1), TT.cy + ny * (TT.plat + 1)];
+    });
+  }
+  var TT_VARIANTS = [["modern", "Modern"], ["wood", "Wood classic"]];
+
   IMPL.turntable = {
     bg: "#0a0a0b",
+    bgFor: function (v) { return v === "wood" ? "#0c0806" : "#0a0a0b"; },
     stat: function (c, T, v, R) {
-      var C = [TT.cx, TT.cy], i;
-      c.fillStyle = "#0a0a0b"; c.fillRect(0, 0, W, H);
+      var C = [TT.cx, TT.cy], i, wood = v === "wood";
+      c.fillStyle = wood ? "#0c0806" : "#0a0a0b"; c.fillRect(0, 0, W, H);
       var lg = c.createRadialGradient(560, 360, 60, 560, 420, 980);
-      lg.addColorStop(0, "rgba(92,96,104,0.34)"); lg.addColorStop(0.55, "rgba(40,42,46,0.16)"); lg.addColorStop(1, "rgba(0,0,0,0)");
+      lg.addColorStop(0, wood ? "rgba(120,96,74,0.3)" : "rgba(92,96,104,0.34)"); lg.addColorStop(0.55, "rgba(40,36,32,0.16)"); lg.addColorStop(1, "rgba(0,0,0,0)");
       c.fillStyle = lg; c.fillRect(0, 0, W, H);
+      if (wood) {
+      // Wood classic: a walnut plinth with real grain under a satin lacquer.
+      c.save();
+      c.shadowColor = "rgba(0,0,0,0.8)"; c.shadowBlur = 70 * SHADOW_SCALE; c.shadowOffsetY = 36 * SHADOW_SCALE;
+      rr(c, 90, 80, 1000, 752, 18); c.fillStyle = "#1c0f07"; c.fill();
+      c.restore();
+      rr(c, 90, 62, 1000, 752, 18);
+      var wg = c.createLinearGradient(90, 62, 1090, 814);
+      wg.addColorStop(0, "#6a3d20"); wg.addColorStop(0.45, "#4e2b15"); wg.addColorStop(1, "#331b0c");
+      c.fillStyle = wg; c.fill();
+      c.save(); rr(c, 90, 62, 1000, 752, 18); c.clip();
+      var rnd = prng(29);
+      for (i = 0; i < 150; i++) {
+        var gy = 40 + i * 5.4 + rnd() * 3, amp = 6 + rnd() * 14, ph = rnd() * 6;
+        c.beginPath(); c.moveTo(90, gy);
+        c.bezierCurveTo(350, gy + amp * Math.sin(ph), 700, gy - amp * Math.cos(ph * 1.3), 1090, gy + amp * 0.6 * Math.sin(ph * 0.7));
+        c.strokeStyle = i % 5 === 0 ? "rgba(255,200,150,0.07)" : i % 3 ? "rgba(25,10,3,0.22)" : "rgba(20,8,2,0.1)";
+        c.lineWidth = 0.8 + rnd() * 1.8; c.stroke();
+      }
+      // A few figure knots in the grain.
+      [[260, 700], [980, 180], [1010, 720]].forEach(function (k) {
+        c.beginPath();
+        for (var e = 0; e < 5; e++) { c.moveTo(k[0] + 26 + e * 9, k[1]); c.ellipse(k[0], k[1], 26 + e * 9, 8 + e * 3, 0.1, 0, TAU); }
+        c.strokeStyle = "rgba(25,10,3,0.18)"; c.lineWidth = 1.2; c.stroke();
+      });
+      // Satin lacquer: a broad soft highlight, stronger near the top edge.
+      var lq = c.createLinearGradient(90, 62, 700, 814);
+      lq.addColorStop(0, "rgba(255,230,200,0.16)"); lq.addColorStop(0.35, "rgba(255,230,200,0.04)"); lq.addColorStop(1, "rgba(0,0,0,0.12)");
+      c.fillStyle = lq; c.fillRect(90, 62, 1000, 752);
+      c.restore();
+      rr(c, 92, 64, 996, 748, 17); c.strokeStyle = "rgba(255,225,190,0.28)"; c.lineWidth = 1.5; c.stroke();
+      // Chrome trim along the front edge.
+      var tr = c.createLinearGradient(0, 796, 0, 812);
+      tr.addColorStop(0, "#f4f5f7"); tr.addColorStop(0.5, "#8d9198"); tr.addColorStop(1, "#d9dce0");
+      c.fillStyle = tr; c.fillRect(110, 798, 960, 10);
+      // Dust-cover hinges at the back.
+      [300, 880].forEach(function (hx) {
+        c.save(); c.shadowColor = "rgba(0,0,0,0.55)"; c.shadowBlur = 8 * SHADOW_SCALE; c.shadowOffsetY = 4 * SHADOW_SCALE;
+        rr(c, hx - 42, 58, 84, 24, 5);
+        var hg = c.createLinearGradient(0, 58, 0, 82);
+        hg.addColorStop(0, "#f2f3f5"); hg.addColorStop(0.5, "#8a8e95"); hg.addColorStop(1, "#c7cad0");
+        c.fillStyle = hg; c.fill(); c.restore();
+        c.fillStyle = "rgba(0,0,0,0.35)"; c.fillRect(hx - 1, 60, 2, 20);
+        [hx - 28, hx + 28].forEach(function (sx) { metal(c, sx, 70, 3.5, "#ffffff", "#6d7178"); });
+      });
+      } else {
       // Plinth: a thick graphite slab seen slightly from above (front face below the top).
       c.save();
       c.shadowColor = "rgba(0,0,0,0.75)"; c.shadowBlur = 70 * SHADOW_SCALE; c.shadowOffsetY = 36 * SHADOW_SCALE;
@@ -902,6 +1001,16 @@
       c.stroke();
       c.beginPath(); c.arc(pd.x, pd.y, pd.pul, phi + Math.PI - bq, phi + Math.PI + bq); c.stroke();
       disc(c, pd.x, pd.y, pd.pul - 1, "#c9ccd1"); disc(c, pd.x, pd.y, 5, "#2a2b2e");
+      }
+      if (wood) {
+      // Heavy platter: a deep side band, a polished chrome rim, a ribbed rubber mat.
+      disc(c, C[0] + 3, C[1] + 18, TT.plat + 3, "rgba(0,0,0,0.55)");
+      disc(c, C[0], C[1] + 14, TT.plat, "#2c2e33");
+      circle(c, C[0], C[1], TT.plat); c.fillStyle = metalSweep(c, C[0], C[1], TT.plat); c.fill();
+      circle(c, C[0], C[1], TT.plat); c.strokeStyle = "rgba(255,255,255,0.45)"; c.lineWidth = 1.2; c.stroke();
+      disc(c, C[0], C[1], TT.plat - 9, "#151516");
+      rings(c, C[0], C[1], TT.plat - 11, TT.rec + 1, 3, "rgba(255,255,255,0.05)", "rgba(0,0,0,0.25)");
+      } else {
       // Platter: side band visible below, polished rim with turning marks,
       // a fixed specular highlight, and a strobe ring.
       disc(c, C[0] + 3, C[1] + 16, TT.plat + 2, "rgba(0,0,0,0.5)");
@@ -911,10 +1020,11 @@
         var pg = c.createConicGradient(-2.2, C[0], C[1]);
         [[0, "#8d9197"], [0.1, "#eef0f2"], [0.22, "#8a8e94"], [0.5, "#6f7379"], [0.6, "#d6d9dd"], [0.72, "#7c8086"], [1, "#8d9197"]].forEach(function (s) { pg.addColorStop(s[0], s[1]); });
         c.fillStyle = pg;
-      } else c.fillStyle = "#a4a8ae";
+      } else c.fillStyle = metalSweep(c, C[0], C[1], TT.plat);
       c.fill();
       rings(c, C[0], C[1], TT.plat - 1, TT.rec + 1, 1.4, "rgba(255,255,255,0.10)", "rgba(0,0,0,0.10)");
       circle(c, C[0], C[1], TT.plat); c.strokeStyle = "rgba(255,255,255,0.35)"; c.lineWidth = 1.2; c.stroke();
+      }
       // Record: lead-in band, fine grooves, glossy run-out, fixed sheen.
       disc(c, C[0], C[1], TT.rec, "#0b0b0c");
       disc(c, C[0], C[1], TT.rec - 1, "#121214");
@@ -929,6 +1039,43 @@
       circle(c, C[0], C[1], TT.rec - 0.5); c.strokeStyle = "rgba(255,255,255,0.16)"; c.lineWidth = 1; c.stroke();
       circle(c, C[0], C[1], TT.rIn + 3); c.strokeStyle = "rgba(255,255,255,0.07)"; c.stroke();
       sheen(c, C[0], C[1], TT.rec);
+      if (wood) {
+      // Brushed-aluminium armboard (clear of the platter) with a chrome pivot,
+      // anti-skate knob and cueing lever.
+      var P = [TT.px, TT.py], bx = P[0] - 45, by = P[1] - 110, bw2 = 140, bh2 = 260;
+      c.save(); c.shadowColor = "rgba(0,0,0,0.55)"; c.shadowBlur = 16 * SHADOW_SCALE; c.shadowOffsetY = 7 * SHADOW_SCALE;
+      rr(c, bx, by, bw2, bh2, 22); c.fillStyle = "#9da1a7"; c.fill(); c.restore();
+      rr(c, bx, by, bw2, bh2, 22); brushed(c, bx, by, bw2, bh2, "#e4e6e9", "#a9adb3", 2.5);
+      rr(c, bx, by, bw2, bh2, 22); c.strokeStyle = "rgba(0,0,0,0.35)"; c.lineWidth = 1.2; c.stroke();
+      [[bx + 16, by + 16], [bx + bw2 - 16, by + 16], [bx + 16, by + bh2 - 16], [bx + bw2 - 16, by + bh2 - 16]].forEach(function (p) { screw(c, p[0], p[1], 5); });
+      metal(c, P[0], P[1], 40, "#ffffff", "#6f737a");
+      rings(c, P[0], P[1], 38, 20, 2.5, "rgba(0,0,0,0.08)", null);
+      var ax = P[0] + 58, ay = P[1] - 62;
+      metal(c, ax, ay, 14, "#ffffff", "#6d7178");
+      c.beginPath();
+      for (i = 0; i < 20; i++) { var ka2 = i * TAU / 20; c.moveTo(ax + Math.cos(ka2) * 14, ay + Math.sin(ka2) * 14); c.lineTo(ax + Math.cos(ka2) * 11, ay + Math.sin(ka2) * 11); }
+      c.strokeStyle = "rgba(0,0,0,0.3)"; c.lineWidth = 1; c.stroke();
+      var cx1 = P[0] + 62, cy1 = P[1] + 70;
+      c.save(); c.shadowColor = "rgba(0,0,0,0.5)"; c.shadowBlur = 8 * SHADOW_SCALE; c.shadowOffsetY = 4 * SHADOW_SCALE;
+      metal(c, cx1, cy1, 11, "#ffffff", "#6f737a"); c.restore();
+      c.strokeStyle = "#d9dce0"; c.lineWidth = 5; c.lineCap = "round";
+      c.beginPath(); c.moveTo(cx1, cy1); c.lineTo(cx1 + 4, cy1 + 36); c.stroke(); c.lineCap = "butt";
+      disc(c, cx1 + 4, cy1 + 38, 6, "#161618");
+      // Chrome arm rest with a rubber cradle.
+      var park2 = armTip(TT.park), rx2 = P[0] + (park2[0] - P[0]) * 0.55, ry2 = P[1] + (park2[1] - P[1]) * 0.55;
+      c.save(); c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 10 * SHADOW_SCALE; c.shadowOffsetY = 5 * SHADOW_SCALE;
+      metal(c, rx2, ry2, 13, "#ffffff", "#6d7178"); c.restore();
+      rr(c, rx2 - 9, ry2 - 4, 18, 8, 4); c.fillStyle = "#141416"; c.fill();
+      // Speed selector: a chrome knob between 33 and 45, and a warm pilot lamp.
+      font(c, 600, 16, SANS); c.textAlign = "center"; c.textBaseline = "alphabetic";
+      c.fillStyle = "rgba(255,230,200,0.75)"; c.fillText("33", 140, 752); c.fillStyle = "rgba(255,230,200,0.4)"; c.fillText("45", 210, 752);
+      knob(c, 175, 766, 20, -2.4);
+      c.save(); c.shadowColor = "rgba(255,160,60,0.95)"; c.shadowBlur = 16 * SHADOW_SCALE;
+      metal(c, 250, 766, 7, "#ffe0a0", "#e07818"); c.restore();
+      disc(c, 248, 764, 2, "rgba(255,255,255,0.8)");
+      c.fillStyle = "rgba(255,230,200,0.45)"; font(c, 600, 12, SANS); c.fillText("POWER", 250, 794);
+      c.textAlign = "left";
+      } else {
       // Armboard: a machined disc with a bevel, the bearing housing, the
       // height tower, the anti-skate dial, the cueing lift and the arm rest.
       var P = [TT.px, TT.py];
@@ -992,6 +1139,7 @@
       disc(c, 150, 778, 4, "#ffb347"); c.restore();
       disc(c, 214, 778, 4, "#2a2b2e");
       c.textBaseline = "alphabetic";
+      }
       // Type block.
       var x = 1160, y = 380;
       font(c, 500, 15, MONO); c.fillStyle = "#77756f"; c.fillText("33⅓ RPM", x, y);
@@ -1006,7 +1154,15 @@
       R.ttTimeY = y + 136;
     },
     dyn: function (c, S, T, v, R) {
-      var C = [TT.cx, TT.cy], lr = TT.lab;
+      var C = [TT.cx, TT.cy], lr = TT.lab, wob = Math.sin(S.platter);
+      // Belt: a sheen travelling at the platter rim's speed (modern only).
+      if (v !== "wood" && typeof c.setLineDash === "function") {
+        var bp = beltPts();
+        c.beginPath(); c.moveTo(bp[0][0], bp[0][1]); c.lineTo(bp[0][2], bp[0][3]); c.moveTo(bp[1][2], bp[1][3]); c.lineTo(bp[1][0], bp[1][1]);
+        c.setLineDash([10, 36]); c.lineDashOffset = -S.beltPos;
+        c.strokeStyle = "rgba(255,255,255,0.4)"; c.lineWidth = 2; c.stroke();
+        c.setLineDash([]); c.lineDashOffset = 0;
+      }
       // Strobe ring: 108 dots. At 33⅓ they hold still (see _physics).
       c.beginPath();
       for (var i = 0; i < STROBE_N; i++) {
@@ -1016,14 +1172,31 @@
         c.lineTo(C[0] + co * 343 + si * 1.6, C[1] + si * 343 - co * 1.6);
         c.lineTo(C[0] + co * 336 + si * 1.6, C[1] + si * 336 - co * 1.6); c.closePath();
       }
-      c.fillStyle = "rgba(18,20,24,0.6)"; c.fill();
-      c.save(); c.translate(C[0], C[1]); c.rotate(S.platter);
+      c.fillStyle = v === "wood" ? "rgba(10,10,12,0.55)" : "rgba(18,20,24,0.6)"; c.fill();
+      // Dust and hairline scratches, turning with the record.
+      var dust = R._dust();
+      c.beginPath();
+      dust.specks.forEach(function (d) { var a = d[1] + S.platter; c.rect(C[0] + Math.cos(a) * d[0], C[1] + Math.sin(a) * d[0], d[2], d[2]); });
+      c.fillStyle = "rgba(225,225,220,0.4)"; c.fill();
+      c.beginPath();
+      dust.scratches.forEach(function (d) { var a = d[1] + S.platter; c.moveTo(C[0] + Math.cos(a) * d[0], C[1] + Math.sin(a) * d[0]); c.arc(C[0], C[1], d[0], a, a + d[2]); });
+      c.strokeStyle = "rgba(255,255,255,0.1)"; c.lineWidth = 0.8; c.stroke();
+      // A slight warp: the surface highlight breathes once per revolution.
+      c.save(); c.globalAlpha = 0.5 + 0.5 * wob;
+      c.fillStyle = R._grad("warp", function () {
+        var g = c.createLinearGradient(C[0] - 260, C[1] - 260, C[0] + 120, C[1] + 120);
+        g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.45, "rgba(255,255,255,0.05)"); g.addColorStop(0.6, "rgba(255,255,255,0)"); g.addColorStop(1, "rgba(255,255,255,0)");
+        return g;
+      });
+      circle(c, C[0], C[1], TT.rec - 2); c.fill(); c.restore();
+      // Label (wobbling ~1 px with the warp).
+      c.save(); c.translate(C[0], C[1] + 0.8 * wob); c.rotate(S.platter);
       var sprite = R._labelSprite();
       if (sprite) c.drawImage(sprite, -lr, -lr, lr * 2, lr * 2); else { c.scale(lr / 118, lr / 118); drawLabel(c, R._artReady()); }
       c.restore();
       // Record clamp: a machined puck (round, so it needs no rotation).
       disc(c, C[0] + 4, C[1] + 7, 44, "rgba(0,0,0,0.4)");
-      disc(c, C[0], C[1], 42, "#a7abb1");
+      disc(c, C[0], C[1], 42, v === "wood" ? "#c9ccd1" : "#a7abb1");
       rings(c, C[0], C[1], 41, 17, 1.5, "rgba(255,255,255,0.14)", "rgba(0,0,0,0.12)");
       c.fillStyle = R._grad("puck", function () {
         var g = c.createRadialGradient(C[0] - 16, C[1] - 18, 2, C[0] - 10, C[1] - 12, 40);
@@ -1032,20 +1205,26 @@
       });
       circle(c, C[0], C[1], 42); c.fill();
       disc(c, C[0], C[1], 16, "#1d1e21"); disc(c, C[0], C[1], 5, "#cfd2d6");
-      // Tonearm: shadow sprite, a soft contact shadow under the stylus, then the arm.
-      var sp = R._armSprites(), ang = Math.atan2(S.tip[1] - TT.py, S.tip[0] - TT.px);
-      if (sp) { c.save(); c.translate(TT.px + 9, TT.py + 13); c.rotate(ang); c.drawImage(sp[1], ARM.x0, ARM.y0, ARM.w, ARM.h); c.restore(); }
-      c.save(); c.translate(S.tip[0] + 2, S.tip[1] + 3);
-      c.fillStyle = R._grad("contact", function () {
-        var g = c.createRadialGradient(0, 0, 0, 0, 0, 9);
-        g.addColorStop(0, "rgba(0,0,0,0.6)"); g.addColorStop(1, "rgba(0,0,0,0)");
-        return g;
-      });
-      circle(c, 0, 0, 9); c.fill(); c.restore();
+      // Tonearm: its shadow (further off while lifted), a contact shadow when
+      // the stylus is down, then the arm.
+      var sp = R._armSprites(), ang = Math.atan2(S.tip[1] - TT.py, S.tip[0] - TT.px), lf = S.lift;
+      if (sp) {
+        c.save(); c.globalAlpha = 1 - 0.35 * lf; c.translate(TT.px + 9 + 10 * lf, TT.py + 13 + 14 * lf); c.rotate(ang);
+        c.drawImage(sp[1], ARM.x0, ARM.y0, ARM.w, ARM.h); c.restore();
+      }
+      if (lf < 0.5) {
+        c.save(); c.globalAlpha = 1 - 2 * lf; c.translate(S.tip[0] + 2, S.tip[1] + 3);
+        c.fillStyle = R._grad("contact", function () {
+          var g = c.createRadialGradient(0, 0, 0, 0, 0, 9);
+          g.addColorStop(0, "rgba(0,0,0,0.6)"); g.addColorStop(1, "rgba(0,0,0,0)");
+          return g;
+        });
+        circle(c, 0, 0, 9); c.fill(); c.restore();
+      }
       c.save(); c.translate(TT.px, TT.py); c.rotate(ang);
-      if (sp) c.drawImage(sp[0], ARM.x0, ARM.y0, ARM.w, ARM.h); else drawArm(c, false);
+      if (sp) c.drawImage(sp[0], ARM.x0, ARM.y0, ARM.w, ARM.h); else drawArm(c, false, v);
       c.restore();
-      font(c, 500, 18, MONO); c.fillStyle = "#a19e97"; c.textAlign = "left";
+      font(c, 500, 18, MONO); c.fillStyle = v === "wood" ? "#b8a58a" : "#a19e97"; c.textAlign = "left";
       c.fillText(timeText(S), 1160, R.ttTimeY || 640);
     },
   };
@@ -1969,7 +2148,7 @@
       vu: [{ x: -0.02, v: 0 }, { x: -0.02, v: 0 }],
       ppm: [{ lvl: -60, hold: -60, holdT: 0 }, { lvl: -60, hold: -60, holdT: 0 }],
       lyScroll: null, sp: new Float32Array(16), spPk: new Float32Array(16), spT: new Float32Array(16),
-      lamp: [false, false], lampT: [1, 1], reelL: 0, reelR: 0, rrL: 0, rrR: 0, platter: 0, platterW: 0, strobe: 0, armR: null, tip: [0, 0],
+      lamp: [false, false], lampT: [1, 1], reelL: 0, reelR: 0, rrL: 0, rrR: 0, platter: 0, platterW: 0, strobe: 0, armR: null, tip: [0, 0], lift: 0, retFrom: null, beltPos: 0, ttT: 0,
     };
     this.grads = {}; this.layer = null; this.layerKey = ""; this.label = null; this.labelKey = "";
     this.fontGen = 0; this.art = null; this.artUrl = ""; this.artImg = null;
@@ -1981,7 +2160,7 @@
     if (canvas.style && !canvas.style.width) { canvas.style.width = "100%"; canvas.style.height = "100%"; canvas.style.display = "block"; }
     this._onResize = function () { self.needSize = true; self._wake(); };
     this._onVis = function () { self._wake(); };
-    this._onFonts = function () { self.fontGen++; self._wake(); };
+    this._onFonts = function () { self.fontGen++; FONT_GEN++; self._wake(); };
     var target = canvas.parentElement || canvas;
     if (typeof root.ResizeObserver === "function") {
       this.ro = new root.ResizeObserver(this._onResize);
@@ -2246,12 +2425,36 @@
       else if ((S.spT[bI] -= dt) <= 0) S.spPk[bI] = Math.max(S.sp[bI], S.spPk[bI] - (18 / 36) * dt);
       if (S.sp[bI] > 0 || S.spPk[bI] > 0) settled = false;
     }
-    // Tonearm: on the groove for the position; parked when nothing is loaded.
-    var g = grooveRadius(S), am = 700 * dt;
+    // Belt sheen runs at the platter rim's speed; the "play clock" drives jitter.
+    S.beltPos = ((S.beltPos || 0) + S.platterW * (TT.plat + 1) * dt) % 46;
+    S.ttT = (S.ttT || 0) + dt * (S.platterW / PLATTER);
+    // Tonearm. On the groove for the position; parked when nothing is loaded.
+    // Near the end of a playing track it lifts, swings back to the lead-in and
+    // lowers so the stylus lands as the next track starts (the Core's position
+    // reset). A skip or seek moves it at most ~0.4 s across the record, lifted.
+    var g = grooveRadius(S), lt = 0;
     if (S.armR == null) S.armR = g;
-    S.armR += clamp(g - S.armR, -am, am);
-    S.tip = armTip(S.armR);
-    if (Math.abs(S.armR - g) > 0.01) settled = false;
+    var rem = S.dur - S.pos;
+    if (S.playing && S.dur > 1.4 && rem < 1.4) {
+      var ph = 1 - rem / 1.4;
+      if (S.retFrom == null) S.retFrom = S.armR;
+      var q = clamp((ph - 0.12) / 0.63, 0, 1);
+      S.armR = S.retFrom + (TT.rIn - S.retFrom) * q * q * (3 - 2 * q);
+      S.lift = ph < 0.12 ? ph / 0.12 : ph < 0.75 ? 1 : Math.max(0, (1 - ph) / 0.25);
+      settled = false;
+    } else {
+      S.retFrom = null;
+      var am = 420 * dt;
+      if (Math.abs(g - S.armR) > 8 && S.dur > 0) lt = 1;
+      S.armR += clamp(g - S.armR, -am, am);
+      S.lift = (S.lift || 0) + clamp(lt - (S.lift || 0), -dt / 0.2, dt / 0.2);
+      if (Math.abs(S.armR - g) > 0.01 || S.lift > 0) settled = false;
+    }
+    // Micro-movement: record eccentricity (once per turn, ~0.6 px) and a
+    // little tracking jitter while it plays; none while lifted.
+    var down = 1 - S.lift, wob = 0.55 * Math.sin(S.platter + 1.3) * down;
+    var jit = S.platterW > 0 ? (0.09 * Math.sin(S.ttT * 23.7) + 0.05 * Math.sin(S.ttT * 41.3 + 1)) * down : 0;
+    S.tip = armTip(S.armR + wob + jit);
     return settled;
   };
 
@@ -2261,6 +2464,13 @@
     var cw = num(el.clientWidth, 0), ch = num(el.clientHeight, 0);
     var dpr = Math.min(this.pxCap, num(root.devicePixelRatio, 1) || 1);
     var bw = Math.max(0, Math.round(cw * dpr)), bh = Math.max(0, Math.round(ch * dpr));
+    // Pin the CSS size to what was measured, so the bitmap (CSS x dpr) is
+    // never shown at its intrinsic size: on a dpr-2 TV that crops the right
+    // and bottom halves off and reads as a scene shifted left.
+    if (cv.parentElement && cv.style && cw > 0 && ch > 0) {
+      if (cv.style.width !== cw + "px") cv.style.width = cw + "px";
+      if (cv.style.height !== ch + "px") cv.style.height = ch + "px";
+    }
     if (cv.width !== bw) cv.width = bw;
     if (cv.height !== bh) cv.height = bh;
     var s = Math.min(bw / W, bh / H), lw = Math.round(W * s), lh = Math.round(H * s);
@@ -2296,8 +2506,21 @@
     return cv;
   };
 
+  // Dust specks and hairline scratches for this record: [r, angle, size].
+  P._dust = function () {
+    if (this.dustKey === this.trackKey && this.dust) return this.dust;
+    var h = 7;
+    for (var i = 0; i < this.trackKey.length; i++) h = (h * 31 + this.trackKey.charCodeAt(i)) >>> 0;
+    var rnd = prng(h), sp = [], sc = [];
+    for (i = 0; i < 70; i++) sp.push([TT.lab + 10 + rnd() * (TT.rec - TT.lab - 16), rnd() * TAU, 0.6 + rnd() * 1.2]);
+    for (i = 0; i < 6; i++) sc.push([TT.rOut + rnd() * (TT.rIn - TT.rOut), rnd() * TAU, 0.05 + rnd() * 0.25]);
+    this.dustKey = this.trackKey;
+    this.dust = { specks: sp, scratches: sc };
+    return this.dust;
+  };
+
   P._armSprites = function () {
-    var b = this.box, key = [b.lw, this.fontGen].join("|");
+    var b = this.box, key = [b.lw, this.fontGen, this.variant].join("|");
     if (key === this.armKey) return this.arm;
     this.armKey = key; this.arm = null;
     var sc = b.lw / W, w = Math.max(1, Math.round(ARM.w * sc)), h = Math.max(1, Math.round(ARM.h * sc));
@@ -2306,11 +2529,11 @@
     if (!ca || !cs) return null;
     var kx = w / ARM.w, ky = h / ARM.h;
     ca.setTransform(kx, 0, 0, ky, -ARM.x0 * kx, -ARM.y0 * ky);
-    drawArm(ca, false);
+    drawArm(ca, false, this.variant);
     // The shadow: the silhouette drawn off-canvas so only its blur lands here.
     cs.setTransform(kx, 0, 0, ky, (-ARM.x0 - 4000) * kx, -ARM.y0 * ky);
     cs.shadowColor = "rgba(0,0,0,0.5)"; cs.shadowBlur = 10 * kx; cs.shadowOffsetX = 4000 * kx;
-    drawArm(cs, true);
+    drawArm(cs, true, this.variant);
     this.arm = [a, sh];
     return this.arm;
   };
@@ -2338,7 +2561,7 @@
   };
 
   // Variant lists live beside their drawing code; copy them into VIEWS.
-  [["cassette", CAS_VARIANTS], ["meters", METER_VARIANTS], ["spectrum", SPEC_VARIANTS], ["lyrics", LYR_VARIANTS], ["clock", CLOCK_VARIANTS]].forEach(function (e) {
+  [["turntable", TT_VARIANTS], ["cassette", CAS_VARIANTS], ["meters", METER_VARIANTS], ["spectrum", SPEC_VARIANTS], ["lyrics", LYR_VARIANTS], ["clock", CLOCK_VARIANTS]].forEach(function (e) {
     VIEWS.filter(function (v) { return v.id === e[0]; })[0].variants = e[1].map(function (m) { return { id: m[0], name: m[1] }; });
   });
 
