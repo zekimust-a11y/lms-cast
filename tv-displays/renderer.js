@@ -1159,8 +1159,10 @@
       if (v !== "wood" && typeof c.setLineDash === "function") {
         var bp = beltPts();
         c.beginPath(); c.moveTo(bp[0][0], bp[0][1]); c.lineTo(bp[0][2], bp[0][3]); c.moveTo(bp[1][2], bp[1][3]); c.lineTo(bp[1][0], bp[1][1]);
-        c.setLineDash([10, 36]); c.lineDashOffset = -S.beltPos;
-        c.strokeStyle = "rgba(255,255,255,0.4)"; c.lineWidth = 2; c.stroke();
+        // Subtle on purpose: the first version read as a marching dashed line
+        // (user, 2026-09-21). Short, faint glints are all a real belt shows.
+        c.setLineDash([4, 42]); c.lineDashOffset = -S.beltPos;
+        c.strokeStyle = "rgba(255,255,255,0.14)"; c.lineWidth = 1.2; c.stroke();
         c.setLineDash([]); c.lineDashOffset = 0;
       }
       // Strobe ring: 108 dots. At 33⅓ they hold still (see _physics).
@@ -1177,7 +1179,7 @@
       var dust = R._dust();
       c.beginPath();
       dust.specks.forEach(function (d) { var a = d[1] + S.platter; c.rect(C[0] + Math.cos(a) * d[0], C[1] + Math.sin(a) * d[0], d[2], d[2]); });
-      c.fillStyle = "rgba(225,225,220,0.4)"; c.fill();
+      c.fillStyle = "rgba(225,225,220,0.22)"; c.fill();
       c.beginPath();
       dust.scratches.forEach(function (d) { var a = d[1] + S.platter; c.moveTo(C[0] + Math.cos(a) * d[0], C[1] + Math.sin(a) * d[0]); c.arc(C[0], C[1], d[0], a, a + d[2]); });
       c.strokeStyle = "rgba(255,255,255,0.1)"; c.lineWidth = 0.8; c.stroke();
@@ -2452,8 +2454,10 @@
     }
     // Micro-movement: record eccentricity (once per turn, ~0.6 px) and a
     // little tracking jitter while it plays; none while lifted.
-    var down = 1 - S.lift, wob = 0.55 * Math.sin(S.platter + 1.3) * down;
-    var jit = S.platterW > 0 ? (0.09 * Math.sin(S.ttT * 23.7) + 0.05 * Math.sin(S.ttT * 41.3 + 1)) * down : 0;
+    // A little more life in the arm and cartridge (user, 2026-09-21): ~1 px of
+    // once-a-revolution eccentricity at 1080p, plus a finer tracking jitter.
+    var down = 1 - S.lift, wob = 0.95 * Math.sin(S.platter + 1.3) * down;
+    var jit = S.platterW > 0 ? (0.16 * Math.sin(S.ttT * 23.7) + 0.09 * Math.sin(S.ttT * 41.3 + 1)) * down : 0;
     S.tip = armTip(S.armR + wob + jit);
     return settled;
   };
@@ -2507,12 +2511,34 @@
   };
 
   // Dust specks and hairline scratches for this record: [r, angle, size].
+  // A small JPEG of the current frame drawn onto a FRESH canvas with the
+  // artwork left out, so it can be read back even when the live canvas is
+  // tainted by a cross-origin cover (for the receiver's diagnostics).
+  P.snapshot = function (w, h) {
+    w = w || 640; h = h || 360;
+    var cv = makeCanvas(w, h), c = null;
+    try { c = cv && cv.getContext("2d"); } catch (e) { c = null; }
+    if (!c) return null;
+    var keep = { ctx: this.ctx, box: this.box, art: this.art, layer: this.layer, layerKey: this.layerKey, label: this.label, labelKey: this.labelKey };
+    try {
+      this.ctx = c; this.box = { bw: w, bh: h, lw: w, lh: h, ox: 0, oy: 0 };
+      this.art = null; this.layer = null; this.layerKey = null; this.label = null; this.labelKey = null;
+      this._draw();
+      return cv.toDataURL("image/jpeg", 0.72);
+    } catch (e) {
+      return null;
+    } finally {
+      for (var k in keep) this[k] = keep[k];
+    }
+  };
+
   P._dust = function () {
     if (this.dustKey === this.trackKey && this.dust) return this.dust;
     var h = 7;
     for (var i = 0; i < this.trackKey.length; i++) h = (h * 31 + this.trackKey.charCodeAt(i)) >>> 0;
     var rnd = prng(h), sp = [], sc = [];
-    for (i = 0; i < 70; i++) sp.push([TT.lab + 10 + rnd() * (TT.rec - TT.lab - 16), rnd() * TAU, 0.6 + rnd() * 1.2]);
+    // 18 faint specks, not 70 bright ones: "too many white specks" (user).
+    for (i = 0; i < 18; i++) sp.push([TT.lab + 10 + rnd() * (TT.rec - TT.lab - 16), rnd() * TAU, 0.5 + rnd() * 0.9]);
     for (i = 0; i < 6; i++) sc.push([TT.rOut + rnd() * (TT.rIn - TT.rOut), rnd() * TAU, 0.05 + rnd() * 0.25]);
     this.dustKey = this.trackKey;
     this.dust = { specks: sp, scratches: sc };

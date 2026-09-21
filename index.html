@@ -737,6 +737,11 @@
             errors: diagErrors.slice(),
             // A small JPEG of what the style canvas shows, on request only.
             snapshot: withSnapshot && cv && !document.getElementById('display-view').hidden ? (() => {
+              // The renderer redraws the frame without the cover on a fresh
+              // canvas: the live one is tainted by any cross-origin cover.
+              if (displayRenderer && typeof displayRenderer.snapshot === 'function') {
+                return displayRenderer.snapshot(640, 360) || 'snapshot failed (renderer)';
+              }
               try {
                 const t = document.createElement('canvas');
                 t.width = 640; t.height = 360;
