@@ -115,7 +115,20 @@
     return String(Math.round(n * 10) / 10);
   }
   function bits(b) { var n = +b; return n > 0 && isFinite(n) ? String(Math.round(n)) : ""; }
+  // DSD reads as its multiple of 44.1 (or 48) kHz: 2.8224 MHz is DSD64, not
+  // "DSD 1 / 2822.4" (seen on the TV). Codec DSD/DSF/DFF, or 1 bit at >= 2 MHz.
+  function dsdInfo(codec, bd, rate) {
+    var hz = +rate;
+    if (!(hz > 0) || !isFinite(hz)) return null;
+    if (hz < 8000 || hz % 1 !== 0) hz *= 1000; // given in kHz (2822.4, 6144)
+    var isDsd = /^(DSD|DSF|DFF)/i.test(str(codec)) || (+bd === 1 && hz >= 2e6);
+    if (!isDsd || hz < 1e6) return null;
+    var m44 = hz / 44100, m48 = hz / 48000, m = Math.abs(m44 - Math.round(m44)) <= Math.abs(m48 - Math.round(m48)) ? m44 : m48;
+    return { name: "DSD" + Math.round(m), mhz: String(Math.round(hz / 1e5) / 10) };
+  }
   function formatText(codec, bd, rate) {
+    var d = dsdInfo(codec, bd, rate);
+    if (d) return d.name + " · " + d.mhz + " MHz";
     var c = str(codec).toUpperCase(), nums = [bits(bd), khz(rate)].filter(Boolean).join(" / ");
     return [c, nums].filter(Boolean).join(" ");
   }
@@ -963,7 +976,7 @@
   var TT_VARIANTS = [["modern", "Modern"], ["wood", "Wood classic"]];
   // Belt scuffs: [position round the loop 0..1, length, lighter?].
   // Four faint marks: nine was "way too much grain" (user, 2026-09-21).
-  var BELT_MARKS = [[0.07, 5, 1], [0.31, 7, 0], [0.56, 4, 1], [0.82, 6, 0]];
+  var BELT_MARKS = [[0.07, 5, 1], [0.39, 7, 0], [0.71, 4, 1]];
 
   IMPL.turntable = {
     bg: "#0a0a0b",
@@ -1174,9 +1187,6 @@
       c.beginPath();
       for (i = 0; i < 24; i++) { var ka = i * TAU / 24; c.moveTo(dx0 + Math.cos(ka) * 12, dy0 + Math.sin(ka) * 12); c.lineTo(dx0 + Math.cos(ka) * 10, dy0 + Math.sin(ka) * 10); }
       c.strokeStyle = "rgba(0,0,0,0.35)"; c.lineWidth = 0.8; c.stroke();
-      c.beginPath();
-      for (i = 0; i < 9; i++) { var ta = -3.9 + i * 0.3, len = i % 4 === 0 ? 7 : 4; c.moveTo(dx0 + Math.cos(ta) * 21, dy0 + Math.sin(ta) * 21); c.lineTo(dx0 + Math.cos(ta) * (21 + len), dy0 + Math.sin(ta) * (21 + len)); }
-      c.strokeStyle = "rgba(255,255,255,0.45)"; c.lineWidth = 1; c.stroke();
       c.strokeStyle = "#1a1b1e"; c.lineWidth = 2; c.beginPath(); c.moveTo(dx0, dy0); c.lineTo(dx0 + Math.cos(-3.0) * 10, dy0 + Math.sin(-3.0) * 10); c.stroke();
       // Cueing lift: a small column with its lever, and the lift bar.
       var cx0 = P[0] - 62, cy0 = P[1] + 26;
@@ -1232,21 +1242,15 @@
           if (!run) return;
           var ux = run[2] - run[0], uy = run[3] - run[1], ul = Math.sqrt(ux * ux + uy * uy) || 1;
           var x0 = run[0] + ux * t, y0 = run[1] + uy * t;
-          c.strokeStyle = m[2] ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.3)";
+          c.strokeStyle = m[2] ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.2)";
           c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + (ux / ul) * m[1], y0 + (uy / ul) * m[1]); c.stroke();
         });
         c.lineCap = "butt"; c.restore();
       }
       // Rim dots turn with the platter at its real speed (a strobe that held
-      // still read as a dead platter: user). A brighter machining mark and a
-      // small plain badge make the rotation legible; the specular highlight
-      // in the static layer stays put.
+      // still read as a dead platter: user). The machining mark and the dark
+      // badge that were here are gone (user: "black dot"); the dots suffice.
       var pr = S.platter;
-      c.beginPath(); c.arc(C[0], C[1], 340, pr + 0.4, pr + 0.72); c.arc(C[0], C[1], 344, pr + 0.72, pr + 0.4, true); c.closePath();
-      c.fillStyle = v === "wood" ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.3)"; c.fill();
-      c.save(); c.translate(C[0] + Math.cos(pr + 3.6) * 339.5, C[1] + Math.sin(pr + 3.6) * 339.5); c.rotate(pr + 3.6 + Math.PI / 2);
-      rr(c, -13, -4, 26, 8, 3); c.fillStyle = v === "wood" ? "#2a2217" : "#1c1e22"; c.fill();
-      c.strokeStyle = "rgba(255,255,255,0.35)"; c.lineWidth = 0.8; c.stroke(); c.restore();
       c.beginPath();
       for (var i = 0; i < STROBE_N; i++) {
         var sa = pr + i * STROBE_PITCH, co = Math.cos(sa), si = Math.sin(sa);
@@ -1264,30 +1268,22 @@
       c.beginPath();
       dust.scratches.forEach(function (d) { var a = d[1] + S.platter; c.moveTo(C[0] + Math.cos(a) * d[0], C[1] + Math.sin(a) * d[0]); c.arc(C[0], C[1], d[0], a, a + d[2]); });
       c.strokeStyle = "rgba(255,255,255,0.1)"; c.lineWidth = 0.8; c.stroke();
-      // A slight warp: the surface highlight breathes once per revolution.
-      c.save(); c.globalAlpha = 0.5 + 0.5 * wob;
-      c.fillStyle = R._grad("warp", function () {
-        var g = c.createLinearGradient(C[0] - 260, C[1] - 260, C[0] + 120, C[1] + 120);
-        g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.45, "rgba(255,255,255,0.05)"); g.addColorStop(0.6, "rgba(255,255,255,0)"); g.addColorStop(1, "rgba(255,255,255,0)");
-        return g;
-      });
-      circle(c, C[0], C[1], TT.rec - 2); c.fill(); c.restore();
+      // No "breathing" warp highlight: measured, it swung the upper-left
+      // quarter of the record ~40% brighter once per revolution, which is the
+      // periodic flash the user saw. The label wobble alone suggests the warp.
       // Label (wobbling ~1 px with the warp).
       c.save(); c.translate(C[0], C[1] + 0.8 * wob); c.rotate(S.platter);
       var sprite = R._labelSprite();
       if (sprite) c.drawImage(sprite, -lr, -lr, lr * 2, lr * 2); else { c.scale(lr / 118, lr / 118); drawLabel(c, R._artReady()); }
       c.restore();
-      // Record clamp: a machined puck (round, so it needs no rotation).
-      disc(c, C[0] + 4, C[1] + 7, 44, "rgba(0,0,0,0.4)");
-      disc(c, C[0], C[1], 42, v === "wood" ? "#c9ccd1" : "#a7abb1");
-      rings(c, C[0], C[1], 41, 17, 1.5, "rgba(255,255,255,0.14)", "rgba(0,0,0,0.12)");
-      c.fillStyle = R._grad("puck", function () {
-        var g = c.createRadialGradient(C[0] - 16, C[1] - 18, 2, C[0] - 10, C[1] - 12, 40);
-        g.addColorStop(0, "rgba(255,255,255,0.55)"); g.addColorStop(1, "rgba(255,255,255,0)");
+      // Just the spindle: a small polished pin (the record weight is gone: user).
+      disc(c, C[0] + 2, C[1] + 3, 9, "rgba(0,0,0,0.45)");
+      c.fillStyle = R._grad("spindle", function () {
+        var g = c.createRadialGradient(C[0] - 3, C[1] - 3, 0.5, C[0], C[1], 8);
+        g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, "#c6c9ce"); g.addColorStop(1, "#5f6369");
         return g;
       });
-      circle(c, C[0], C[1], 42); c.fill();
-      disc(c, C[0], C[1], 16, "#1d1e21"); disc(c, C[0], C[1], 5, "#cfd2d6");
+      circle(c, C[0], C[1], 8); c.fill();
       // Tonearm: its shadow (further off while lifted), a contact shadow when
       // the stylus is down, then the arm.
       var sp = R._armSprites(), ang = Math.atan2(S.tip[1] - TT.py, S.tip[0] - TT.px), lf = S.lift;
@@ -1386,8 +1382,8 @@
         var bw = measure(c, big);
         if (unit) { font(c, 500, 44, DISPLAY); c.fillStyle = "#8fb7d0"; c.fillText(unit, cx + bw + 6, 390); }
       };
-      cell(140, 480, "SAMPLE RATE", T.rate, "kHz");
-      cell(660, 340, "BIT DEPTH", T.bits, "bit");
+      cell(140, 480, "SAMPLE RATE", T.rate, T.rateUnit || "kHz");
+      cell(660, 340, T.bitsLabel || "BIT DEPTH", T.bits, T.bitsUnit == null ? "bit" : T.bitsUnit);
       cell(1040, 420, "CODEC", T.codec, "");
       var path = T.pathText || (T.out && T.fmt && T.out !== T.fmt ? T.fmt + "  →  " + T.out : "");
       if (path) { c.fillStyle = "#8fb7d0"; c.fillText(fit(c, 500, 26, MONO, path, 1320, 0.6), 140, 480); }
@@ -1608,18 +1604,12 @@
           return g;
         });
       };
-      // Packs: oxide brown, a fixed sheen, fine winding lines, a glossier edge.
-      c.beginPath(); c.arc(RL.lx, cy, rL, 0, TAU); c.moveTo(RL.rx + rR, cy); c.arc(RL.rx, cy, rR, 0, TAU);
-      c.fillStyle = "#3a2416"; c.fill();
-      [[RL.lx, rL], [RL.rx, rR]].forEach(function (p) { circle(c, p[0], cy, p[1]); c.fillStyle = sheenG(p[0]); c.fill(); });
-      c.beginPath();
-      [[RL.lx, rL], [RL.rx, rR]].forEach(function (p) { for (var k = p[1] - 7; k > RL.hub + 2; k -= 7) { c.moveTo(p[0] + k, cy); c.arc(p[0], cy, k, 0, TAU); } });
-      c.strokeStyle = "rgba(0,0,0,0.12)"; c.lineWidth = 1; c.stroke();
-      c.beginPath(); c.arc(RL.lx, cy, rL - 1.5, 0, TAU); c.moveTo(RL.rx + rR - 1.5, cy); c.arc(RL.rx, cy, rR - 1.5, 0, TAU);
-      c.strokeStyle = "rgba(255,214,170,0.28)"; c.lineWidth = 2; c.stroke();
       // Tension arms and their rollers, then the tape path.
       var qa = armRoller(rL), qb = armRoller(rR);
-      var a = supplyTangent(rL, qa[0], qa[1]), b = supplyTangent(rR, qb[0], qb[1]);
+      // The tape's centre line runs half a tape-width inside the pack edge, so
+      // it leaves the outer wrap flush; it starts under the pack (drawn next)
+      // so there is no end cap or step where it meets the pack (user).
+      var TW = 3.6, a = supplyTangent(rL - TW / 2, qa[0], qa[1]), b = supplyTangent(rR - TW / 2, qb[0], qb[1]);
       var ta = Math.atan2(a[3] - qa[1], a[2] - qa[0]); if (ta < Math.PI / 2) ta += TAU;
       var tb = Math.atan2(b[3] - qb[1], b[2] - qb[0]); if (tb < Math.PI / 2) tb += TAU;
       [[RL.apx, qa, 1], [W - RL.apx, [W - qb[0], qb[1]], -1]].forEach(function (arm) {
@@ -1639,16 +1629,28 @@
         disc(c, px, RL.apy, 11, "#6d7178"); disc(c, px, RL.apy, 5, "#e6e8eb");
         disc(c, q[0], q[1], RL.roll + 4, "#55595f"); disc(c, q[0], q[1], RL.roll - 4, "#d6d9dd"); disc(c, q[0], q[1], 5, "#3a3c40");
       });
-      c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(a[2], a[3]);
+      var back = function (p, k) { var ux = p[2] - p[0], uy = p[3] - p[1], ul = Math.sqrt(ux * ux + uy * uy) || 1; return [p[0] - (ux / ul) * k, p[1] - (uy / ul) * k]; };
+      var a0p = back(a, 14), b0p = back(b, 14);
+      c.beginPath(); c.moveTo(a0p[0], a0p[1]); c.lineTo(a[2], a[3]);
       c.arc(qa[0], qa[1], RL.roll, ta, Math.PI / 2, true);
       c.lineTo(W - qb[0], qb[1] + RL.roll);
       c.arc(W - qb[0], qb[1], RL.roll, Math.PI / 2, Math.PI - tb, true);
-      c.lineTo(W - b[0], b[1]);
-      c.strokeStyle = "#4a2d19"; c.lineWidth = 5; c.lineJoin = "round"; c.stroke();
-      // A thin highlight where the tape wraps each roller.
-      c.beginPath(); c.arc(qa[0], qa[1], RL.roll + 1.5, ta, Math.PI / 2, true);
-      c.moveTo(W - qb[0], qb[1] + RL.roll + 1.5); c.arc(W - qb[0], qb[1], RL.roll + 1.5, Math.PI / 2, Math.PI - tb, true);
-      c.strokeStyle = "rgba(255,210,170,0.5)"; c.lineWidth = 1.2; c.stroke();
+      c.lineTo(W - b0p[0], b0p[1]);
+      c.strokeStyle = "#3a2416"; c.lineWidth = TW; c.lineJoin = "round"; c.lineCap = "butt"; c.stroke();
+      // A faint highlight where the tape wraps each roller.
+      c.beginPath(); c.arc(qa[0], qa[1], RL.roll + 1, ta, Math.PI / 2, true);
+      c.moveTo(W - qb[0], qb[1] + RL.roll + 1); c.arc(W - qb[0], qb[1], RL.roll + 1, Math.PI / 2, Math.PI - tb, true);
+      c.strokeStyle = "rgba(255,210,170,0.22)"; c.lineWidth = 0.9; c.stroke();
+      // Packs: oxide brown, a fixed sheen, fine winding lines, a glossier edge.
+      c.beginPath(); c.arc(RL.lx, cy, rL, 0, TAU); c.moveTo(RL.rx + rR, cy); c.arc(RL.rx, cy, rR, 0, TAU);
+      c.fillStyle = "#3a2416"; c.fill();
+      [[RL.lx, rL], [RL.rx, rR]].forEach(function (p) { circle(c, p[0], cy, p[1]); c.fillStyle = sheenG(p[0]); c.fill(); });
+      c.beginPath();
+      [[RL.lx, rL], [RL.rx, rR]].forEach(function (p) { for (var k = p[1] - 7; k > RL.hub + 2; k -= 7) { c.moveTo(p[0] + k, cy); c.arc(p[0], cy, k, 0, TAU); } });
+      c.strokeStyle = "rgba(0,0,0,0.12)"; c.lineWidth = 1; c.stroke();
+      c.beginPath(); c.arc(RL.lx, cy, rL - 1.5, 0, TAU); c.moveTo(RL.rx + rR - 1.5, cy); c.arc(RL.rx, cy, rR - 1.5, 0, TAU);
+      c.strokeStyle = "rgba(255,214,170,0.28)"; c.lineWidth = 2; c.stroke();
+
       // Capstan (polished) above the tape, pinch roller (black rubber) below.
       var ty = (qa[1] + qb[1]) / 2 + RL.roll;
       disc(c, 962, ty + 23, 20, "rgba(0,0,0,0.3)");
@@ -1684,6 +1686,15 @@
           return g;
         });
         c.fill("evenodd");
+        // Grain and faint scratches: a per-reel sprite turning with the reel.
+        var gs = R._reelGrain(x === RL.lx ? 0 : 1);
+        if (gs) { c.save(); c.translate(x, cy); c.rotate(rot); c.drawImage(gs, -RL.F, -RL.F, RL.F * 2, RL.F * 2); c.restore(); }
+        c.beginPath(); c.arc(x, cy, RL.F, 0, TAU);
+        for (k = 0; k < 3; k++) {
+          var b0 = rot + k * TAU / 3 - 0.55, b1 = b0 + 1.1;
+          c.moveTo(x + Math.cos(b0) * 205, cy + Math.sin(b0) * 205);
+          c.arc(x, cy, 205, b0, b1); c.arc(x, cy, 88, b1, b0, true); c.closePath();
+        }
         // Bevelled window edges: a light lip and a dark lip.
         c.save(); c.translate(-1, -1.2); c.strokeStyle = "rgba(255,255,255,0.7)"; c.lineWidth = 1.4; c.stroke(); c.restore();
         c.save(); c.translate(1, 1.2); c.strokeStyle = "rgba(20,22,26,0.55)"; c.lineWidth = 1.4; c.stroke(); c.restore();
@@ -2211,12 +2222,14 @@
 
   function trackInfo(t) {
     t = t || {};
+    var hasOut = !!(t.outSampleRate || t.outBitDepth), dsd = hasOut ? dsdInfo(t.outCodec || t.codec, t.outBitDepth, t.outSampleRate) : dsdInfo(t.codec, t.bitDepth, t.sampleRate);
     return {
+      rateUnit: dsd ? "MHz" : "kHz", bitsLabel: dsd ? "DSD RATE" : "BIT DEPTH", bitsUnit: dsd ? "" : "bit",
       title: str(t.title), artist: str(t.artist), album: str(t.album), year: str(t.year),
       fmt: formatText(t.codec, t.bitDepth, t.sampleRate),
       out: formatText(t.outCodec, t.outBitDepth, t.outSampleRate),
-      rate: khz(t.outSampleRate) || khz(t.sampleRate),
-      bits: bits(t.outBitDepth) || bits(t.bitDepth),
+      rate: dsd ? dsd.mhz : khz(t.outSampleRate) || khz(t.sampleRate),
+      bits: dsd ? dsd.name : bits(t.outBitDepth) || bits(t.bitDepth),
       codec: str(t.codec).toUpperCase(),
       pathText: str(t.pathText), dr: str(t.dr),
     };
@@ -2375,7 +2388,7 @@
     if (doc && typeof doc.removeEventListener === "function") doc.removeEventListener("visibilitychange", this._onVis);
     if (doc && doc.fonts && typeof doc.fonts.removeEventListener === "function") doc.fonts.removeEventListener("loadingdone", this._onFonts);
     if (this.artImg) { this.artImg.onload = this.artImg.onerror = null; }
-    this.layer = this.label = this.arm = this.art = this.artImg = null; this.grads = {};
+    this.layer = this.label = this.arm = this.art = this.artImg = null; this.grads = {}; this.grain = null;
   };
 
   // The cover on screen stays until its replacement has LOADED. Hosts get
@@ -2667,6 +2680,42 @@
     this.dustKey = this.trackKey;
     this.dust = { specks: sp, scratches: sc };
     return this.dust;
+  };
+
+  // Brushed/anodised grain and a few hairline scratches for reel `i`, on the
+  // flange only (windows cut out), in the reel's own frame at rotation 0.
+  P._reelGrain = function (i) {
+    var b = this.box, key = b.lw + "|" + i;
+    this.grain = this.grain || {};
+    if (this.grain[key] !== undefined) return this.grain[key];
+    var px = Math.max(1, Math.round(RL.F * 2 * b.lw / W)), cv = makeCanvas(px, px), c = null;
+    try { c = cv && cv.getContext("2d"); } catch (e) { c = null; }
+    if (!c) return (this.grain[key] = null);
+    var k = px / (RL.F * 2), rnd = prng(101 + i * 7919), j;
+    c.setTransform(k, 0, 0, k, px / 2, px / 2);
+    c.beginPath(); c.arc(0, 0, RL.F - 1, 0, TAU);
+    for (j = 0; j < 3; j++) { var a0 = j * TAU / 3 - 0.55, a1 = a0 + 1.1; c.moveTo(Math.cos(a0) * 205, Math.sin(a0) * 205); c.arc(0, 0, 205, a0, a1); c.arc(0, 0, 88, a1, a0, true); c.closePath(); }
+    c.clip("evenodd");
+    // Lathe grain: sparse concentric rings of varying tone (sparse, so no moire).
+    [["rgba(255,255,255,", 1], ["rgba(0,0,0,", 0]].forEach(function (t) {
+      for (var r = 30; r < RL.F; r += 3 + rnd() * 4) {
+        c.beginPath(); c.arc(0, 0, r, 0, TAU);
+        c.strokeStyle = t[0] + (t[1] ? 0.02 + rnd() * 0.05 : 0.02 + rnd() * 0.04).toFixed(3) + ")"; c.lineWidth = 0.6 + rnd() * 0.8; c.stroke();
+      }
+    });
+    // Hairline scratches and a couple of scuffs.
+    for (j = 0; j < 18; j++) {
+      var r0 = 60 + rnd() * (RL.F - 70), a = rnd() * TAU, len = 8 + rnd() * 50, dir = a + (rnd() - 0.5) * 2.4;
+      var x0 = Math.cos(a) * r0, y0 = Math.sin(a) * r0;
+      c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + Math.cos(dir) * len, y0 + Math.sin(dir) * len);
+      c.strokeStyle = j % 3 ? "rgba(255,255,255,0.16)" : "rgba(40,42,46,0.16)"; c.lineWidth = 0.6; c.stroke();
+    }
+    for (j = 0; j < 3; j++) {
+      var rr0 = 100 + rnd() * 110, aa = rnd() * TAU;
+      c.beginPath(); c.arc(0, 0, rr0, aa, aa + 0.2 + rnd() * 0.3);
+      c.strokeStyle = "rgba(80,82,88,0.1)"; c.lineWidth = 3 + rnd() * 3; c.stroke();
+    }
+    return (this.grain[key] = cv);
   };
 
   P._armSprites = function () {
