@@ -52,6 +52,22 @@
         src: url(https://fonts.gstatic.com/s/raleway/v37/1Ptxg8zYS_SKggPN4iEgvnHyvveLxVs9pbCIPrE.woff2) format('woff2');
         unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
       }
+          /* Display styles (cassette deck, VU meters, ...) from Lyr's shared
+         renderer. Chosen in Lyr > Settings > TV Display; the Core sends it as
+         display_view on every NOW_PLAYING. */
+      #display-view {
+        position: fixed;
+        inset: 0;
+        /* Above the classic layout (bottom bar and message are 10), below the
+           volume overlay (20). At 5 the classic bar painted over the style. */
+        z-index: 15;
+        background: #000;
+      }
+      #display-view canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
     </style>
     <script>
       // Cache-bust the receiver URL (Chromecast can aggressively cache GitHub Pages)
@@ -446,12 +462,20 @@
       </div>
     </div>
 
+    <div id="display-view" hidden>
+      <canvas id="display-canvas"></canvas>
+    </div>
+
     <div id="volume-overlay">
       <div id="volume-icon" class="volume-icon">🔊</div>
       <div id="volume-value" class="volume-text">0</div>
     </div>
 
     <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <!-- A copy of lyriqapp's server/templates/tv-displays/renderer.js. This page
+         is https and cannot load it from an http Core, so it ships here; keep the
+         two identical (lyriqapp: scripts/cast/sync-renderer.sh). -->
+    <script src="tv-displays/renderer.js"></script>
     <script>
       const CAST_NAMESPACE = 'urn:x-cast:com.zeki.rooncast';
       const context = cast.framework.CastReceiverContext.getInstance();
@@ -626,6 +650,70 @@
         }
       }
 
+      // --- Display styles -----------------------------------------------------
+      const displayViewEl = document.getElementById('display-view');
+      const displayCanvas = document.getElementById('display-canvas');
+      let displayRenderer = null;
+      let displayKey = '';
+      let displayLevelsKey = '';
+
+      function hideDisplayStyle() {
+        if (displayViewEl) displayViewEl.hidden = true;
+      }
+
+      function codecName(type) {
+        const t = String(type || '').trim().toLowerCase().replace(/\s*radio$/, '');
+        const map = { flc: 'FLAC', alc: 'ALAC', aif: 'AIFF', ops: 'OPUS', ogf: 'OGG', wvp: 'WAV', pcm: 'WAV', dsf: 'DSD', dff: 'DSD' };
+        return map[t] || t.toUpperCase();
+      }
+
+      // Returns true when a style owns the screen for this payload.
+      function applyDisplayStyle(payload, info) {
+        const lib = window.LyrDisplays;
+        const view = String(payload.display_view || 'classic');
+        const variant = String(payload.display_variant || '');
+        const known = !!(lib && lib.VIEWS && lib.VIEWS.some((v) => v.id === view));
+        if (!known) {
+          if (displayRenderer) {
+            displayRenderer.destroy();
+            displayRenderer = null;
+            displayKey = '';
+            displayLevelsKey = '';
+          }
+          hideDisplayStyle();
+          return false;
+        }
+        const key = view + '|' + variant;
+        if (!displayRenderer) {
+          // Chromecast GPUs are weak: 30 fps is plenty for needles and reels.
+          displayRenderer = lib.create(displayCanvas, { view, variant: variant || undefined, maxFps: 30 });
+          displayLevelsKey = '';
+        } else if (key !== displayKey) {
+          displayRenderer.setView(view, variant || undefined);
+        }
+        displayKey = key;
+        const audio = payload.audio || {};
+        displayRenderer.setTrack({
+          title: info.title,
+          artist: info.artist,
+          album: info.album,
+          artworkUrl: info.artwork || '',
+          codec: codecName(audio.codec),
+          bitDepth: audio.bit_depth || undefined,
+          sampleRate: audio.sample_rate || undefined,
+        });
+        displayRenderer.setPosition(info.seek, info.playing, info.duration);
+        // Levels ride on the payload once the Core has analysed the track.
+        const lv = payload.levels;
+        const lvKey = lv && lv.data ? info.trackId + '|' + lv.bucketSeconds + '|' + lv.data.length : info.trackId + '|none';
+        if (lvKey !== displayLevelsKey) {
+          displayLevelsKey = lvKey;
+          displayRenderer.setLevels(lv && lv.data ? lib.decodeLevels(lv) : null);
+        }
+        displayViewEl.hidden = false;
+        return true;
+      }
+
       function applyNowPlaying(payload) {
         const state = payload.state || 'idle';
         const isPlaying = state === 'playing';
@@ -746,6 +834,17 @@
               updateBackgroundSources(artistImageList || [], albumBackground, albumImage);
             }
           }
+
+          applyDisplayStyle(payload, {
+            trackId,
+            title: trackTitle,
+            artist: artistName,
+            album: nowPlaying.three_line?.line3 || '',
+            artwork: albumArtSrc,
+            seek,
+            duration,
+            playing: isPlaying,
+          });
 
           // Show volume overlay when volume changes (same behavior as roon-cast receiver)
           handleVolumeOverlay(payload.output?.volume);
@@ -1276,6 +1375,8 @@
       function resetDisplay() {
         // Hide the entire bottom bar for blank screen
         bottomBar.classList.add('hidden');
+        // Paused/idle reads the same in every display style.
+        hideDisplayStyle();
 
         if (notPlayingContainer) {
           notPlayingContainer.classList.remove('hidden');
