@@ -720,6 +720,7 @@
             dpr: window.devicePixelRatio,
             hidden: document.hidden,
             renderer: lib ? { views: lib.VIEWS.map((v) => v.id), loadedAt: window.__rendererLoadedAt || null } : { missing: true, error: window.__rendererLoadError || null },
+            art: displayRenderer ? { shown: !!displayRenderer.art, pending: !!displayRenderer.artImg, want: String(displayRenderer.artWant || '').slice(0, 60), url: String(displayRenderer.artUrl || '').slice(0, 60) } : null,
             view: displayKey || null,
             canvas: cv ? { w: cv.width, h: cv.height, css: r ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null } : null,
             features: proto ? {
@@ -766,6 +767,7 @@
       let displayLevelsKey = '';
       let displaySpectrumKey = '';
       let displayLyricsKey = '';
+      let lastStyleArt = { trackId: '', src: '' };
       // The last style the Core asked for, so a PAUSE (which carries no
       // payload) can keep the clock up as a standby screen.
       let lastDisplayView = '';
@@ -1005,12 +1007,16 @@
           }
 
           try {
+          // Keep the last cover for the SAME track: staged NOW_PLAYING payloads
+          // can arrive without art, and passing "no art" through made the
+          // renderer drop the turntable label's cover (user, 2026-09-22).
+          if (albumArtSrc) lastStyleArt = { trackId, src: albumArtSrc };
           applyDisplayStyle(payload, {
             trackId,
             title: trackTitle,
             artist: artistName,
             album: nowPlaying.three_line?.line3 || '',
-            artwork: albumArtSrc,
+            artwork: albumArtSrc || (lastStyleArt.trackId === trackId ? lastStyleArt.src : ''),
             seek,
             duration,
             playing: isPlaying,
