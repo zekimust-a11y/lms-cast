@@ -799,12 +799,13 @@
   var STEEL = [[0, "#2a2c30"], [0.25, "#aeb3ba"], [0.38, "#f4f6f8"], [0.55, "#8d9299"], [1, "#1c1d20"]];
   var ALLOY = [[0, "#55595f"], [0.22, "#c9ccd1"], [0.34, "#ffffff"], [0.5, "#b7bbc1"], [0.85, "#6d7178"], [1, "#3e4146"]];
   var BLACK = [[0, "#0b0b0c"], [0.3, "#4a4c51"], [0.42, "#6c6f75"], [0.6, "#232427"], [1, "#08080a"]];
-  // The tube's axis angle in the arm's frame (pivot->stylus is 0). The rear
-  // stub and counterweight lie on it: counterweight centre at -109 along it.
-  function armTubeAngle() {
-    var ca = Math.cos(ARM.off), sa = Math.sin(ARM.off), nx = TT.L - ca * 96, ny = -sa * 96;
-    return Math.atan2(ny, nx);
-  }
+  // The tube's rear axis in the arm's frame. It is 0: the rear stub, the
+  // counterweight and the tube's straight run all lie on the pivot->stylus
+  // line, so the counterweight sits exactly opposite the stylus and turns
+  // with it (user: "the arm and counterweight are one piece"). The headshell
+  // offset is taken up by a J-bend (modern) or the S (wood) at the front.
+  // Counterweight centre: 109 behind the pivot on this axis.
+  function armTubeAngle() { return 0; }
   function drawArm(c, flat, style) {
     var L = TT.L, ca = Math.cos(ARM.off), sa = Math.sin(ARM.off);
     var HS = 1.5, nx = L - ca * 64 * HS, ny = -sa * 64 * HS, tl = Math.sqrt(nx * nx + ny * ny), ta = armTubeAngle();
@@ -829,15 +830,23 @@
       c.fillStyle = "rgba(255,255,255,0.18)"; c.fillRect(-150, -2, 0.8, 4);
     });
     c.restore();
-    // Tapered tube with its collars, in the tube's own frame. The wood deck
-    // has an S-shaped tube ending in a detachable headshell's collar.
+    // The tube, in the arm's frame. Modern: a straight tapered run on the
+    // axis, then a J-bend into the headshell. Wood: a straight rear run on the
+    // axis, then the S, arriving along the headshell's axis.
     c.save(); c.rotate(ta);
+    var jEnd = function (x0, k) { c.bezierCurveTo(x0 + k, 0, nx - ca * k, ny - sa * k, nx, ny); };
+    // A detachable headshell's collar at the tube's end, along the headshell axis.
+    var collar = function (fl) {
+      c.save(); c.translate(nx, ny); c.rotate(ARM.off);
+      if (fl) c.fillRect(-16, -8, 18, 16);
+      else { cyl(c, -16, -6, 8, BLACK); cyl(c, -6, 2, 7, STEEL); c.fillStyle = "rgba(0,0,0,0.4)"; c.fillRect(-6.5, -7, 1, 14); }
+      c.restore();
+    };
     if (style === "wood") F(function (f) {
-      // A straight rear section on the axis (collinear with the stub), then the S.
       var sCurve = function () {
         c.beginPath(); c.moveTo(20, 0); c.lineTo(tl * 0.22, 0);
         c.bezierCurveTo(tl * 0.36, 0, tl * 0.42, 40, tl * 0.58, 30);
-        c.bezierCurveTo(tl * 0.74, 20, tl * 0.8, -22, tl - 14, 0);
+        c.bezierCurveTo(tl * 0.74, 20, nx - ca * 60, ny - sa * 60, nx, ny);
       };
       c.lineCap = "round";
       sCurve(); c.strokeStyle = f ? "#000" : "#50545b"; c.lineWidth = 13; c.stroke();
@@ -846,21 +855,30 @@
         c.save(); c.translate(0, -2.4); sCurve(); c.strokeStyle = "rgba(255,255,255,0.92)"; c.lineWidth = 2.2; c.stroke(); c.restore();
       }
       c.lineCap = "butt";
-      if (f) { c.fillRect(tl - 18, -8, 22, 16); return; }
+      if (f) { collar(true); return; }
       cyl(c, 18, 40, 9.5, STEEL);
-      c.save(); c.translate(tl - 8, 0); cyl(c, -12, -2, 8, BLACK); cyl(c, -2, 8, 7, STEEL); c.fillStyle = "rgba(0,0,0,0.4)"; c.fillRect(-2.5, -7, 1, 14); c.restore();
+      collar(false);
     });
     else F(function (f) {
-      c.beginPath(); c.moveTo(20, -7.5); c.lineTo(tl, -4.5); c.lineTo(tl, 4.5); c.lineTo(20, 7.5); c.closePath();
-      if (f) { c.fill(); return; }
+      var x0 = nx - 90;
+      c.beginPath(); c.moveTo(20, -7.5); c.lineTo(x0, -5); c.lineTo(x0, 5); c.lineTo(20, 7.5); c.closePath();
+      var bend = function () { c.beginPath(); c.moveTo(x0 - 1, 0); jEnd(x0, 40); };
+      c.lineCap = "round";
+      if (f) { c.fill(); bend(); c.strokeStyle = "#000"; c.lineWidth = 10; c.stroke(); c.lineCap = "butt"; collar(true); return; }
       var g = c.createLinearGradient(0, -7.5, 0, 7.5);
       ALLOY.forEach(function (s) { g.addColorStop(s[0], s[1]); });
       c.fillStyle = g; c.fill();
-      // Specular streak along the length, narrowing with the taper.
-      c.beginPath(); c.moveTo(22, -3.6); c.lineTo(tl - 2, -2.2); c.lineTo(tl - 2, -1.4); c.lineTo(22, -2.2); c.closePath();
+      // The J-bend: dark edge, metal, and the highlight following it.
+      bend(); c.strokeStyle = "#5d6168"; c.lineWidth = 10; c.stroke();
+      bend(); c.strokeStyle = "#c3c7cc"; c.lineWidth = 7.4; c.stroke();
+      c.save(); c.translate(0, -2); bend(); c.strokeStyle = "rgba(255,255,255,0.85)"; c.lineWidth = 1.4; c.stroke(); c.restore();
+      c.lineCap = "butt";
+      // Specular streak along the straight run, narrowing with the taper.
+      c.beginPath(); c.moveTo(22, -3.6); c.lineTo(x0 - 2, -2.4); c.lineTo(x0 - 2, -1.6); c.lineTo(22, -2.2); c.closePath();
       c.fillStyle = "rgba(255,255,255,0.9)"; c.fill();
       cyl(c, 18, 40, 9.5, STEEL);
-      c.save(); c.translate(tl - 8, 0); cyl(c, -6, 8, 6.2, STEEL); c.restore();
+      cyl(c, x0 - 8, x0 + 4, 6.4, STEEL);
+      collar(false);
     });
     c.restore();
     // Gimbal yoke with its bearings (the housing base is in the static layer).
